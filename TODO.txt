@@ -1,0 +1,9 @@
+make bark different texture at bases
+	- done but UVs are weird
+
+make trees async generated
+
+Ideas:
+certain trees grow at night - more reason to go at night
+diminishing returns on types of wood - others increase in value over time till collected - eg contract system/pinboard outside
+trees drop acorns
