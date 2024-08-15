@@ -11,6 +11,7 @@ class UProceduralMeshComponent;
 
 UENUM()
 enum EChunkRenderState {
+	NotRendered,
 	Rendering,
 	Rendered
 };
@@ -56,11 +57,9 @@ protected:
 
 	void GenerateMesh(TArray<FVector> Vertices, TArray<int> Triangles, TArray<FVector> Normals, TArray<FVector2D> UVs, TArray<FProcMeshTangent> Tangents, TArray<FColor> Colors);
 
-	float GetNoiseValueAtPoint(FVector2D Point, float Frequency);
-
 	float GetTerrainPointData(FVector2D Point);
 
-	int ExtractRandomNumber();
+	int ExtractRandomNumber(int* i_Seed);
 
 	void ResetLookupTable();
 
@@ -71,7 +70,13 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
+	float GetNoiseValueAtPoint(FVector2D Point, float Frequency, int* i_Seed);
+
 	void RenderChunks(FVector2D From);
+
+	void RunBatchJob(const TArray<TFunction<void()>>& Jobs);
+
+	void RenderSingleChunk(FChunkRenderData ChunkData);
 
 	void RemoveChunk(FVector2D ChunkLocationToRemove);
 
@@ -83,15 +88,15 @@ public:
 
 	void RecursiveRender(FVector2D ChunkCoord, int Iteration);
 
-	void RenderSingleChunk(FVector2D ChunkCoord, EChunkQuality Quality);
-
 	void UpdateChunk(FVector2D ChunkCoord, EChunkQuality Quality);
 
-	int DesignateChunkIndex(FVector2D ChunkLocation, EChunkQuality ChunkQuality);
+	FChunkRenderData* DesignateChunkIndex(FVector2D ChunkLocation, EChunkQuality ChunkQuality);
+
+	FChunkRenderData* FindOrCreateChunkData(FVector2D ChunkLocation, EChunkQuality ChunkQuality);
 
 	void GetChunkRenderData(FMeshData* MeshData, FVector2D ChunkCoord, EChunkQuality Quality);
 
-	FChunkRenderData* CheckChunk(FVector2D ChunkLocation);
+	FChunkRenderData* GetChunk(FVector2D ChunkLocation);
 
 	int CheckChunk(FVector2D ChunkLocation, FChunkRenderData** FoundRenderData);
 
@@ -111,11 +116,11 @@ public:
 public:
 	// Length and width of each chunk, must be odd and greater than 3
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	int chunkSize = 200;
+	int chunkSize = 100;
 
 	// Length and width of each tile, which consists of two triangles
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	int tileSize = 500;
+	int tileSize = 600;
 
 	// (Chunksize - 1) x tileSize
 	UPROPERTY(BlueprintReadOnly, VisibleAnywhere)
@@ -123,11 +128,11 @@ public:
 
 	// Terrain material
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	UMaterial* TerrainMaterial;
+	UMaterialInstance* TerrainMaterial;
 
 	// Chunk render distance, eg Distance=3 means 3 chunks from observer will be rendered
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	int ChunkRenderDistance = 3;
+	int ChunkRenderDistance = 5;
 
 	// Which intervals should rendercheck be called? In seconds
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
@@ -138,11 +143,15 @@ public:
 
 	// Distance at which point onwards the terrain is medium quality in chunks
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	int MediumLODCutoffDist = 3;
+	int MediumLODCutoffDist = 2;
 
 	// Distance at which point onwards the terrain is low quality
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	int LowLODCutoffDist = 5;
+	int LowLODCutoffDist = 3;
+
+	// How many render jobs should be run in order at once, less jobs = faster computation & more lag, more jobs = slower computation & less lag
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	int JobsPerBatch = 10;
 
 	// Local Variables
 public:
@@ -154,7 +163,6 @@ public:
 
 	// An array of integers with pseudorandom numbers that will always be the same for the same seed, kind of like a look-up table
 	TArray<int> SeedArray = TArray<int>();
-	int i_Seed = 0;
 
 	// Stores chunks as pairs of their location (for unrendering) and their index, which correspond to the ProceduralMeshComponent's Mesh Section Index
 	TArray<FChunkRenderData> Chunks;

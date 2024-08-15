@@ -15,7 +15,6 @@ ATreeRoot::ATreeRoot()
 void ATreeRoot::BeginPlay()
 {
 	Super::BeginPlay();
-
 }
 
 /*

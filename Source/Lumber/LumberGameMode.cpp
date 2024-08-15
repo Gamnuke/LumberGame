@@ -25,24 +25,31 @@ void ALumberGameMode::BeginPlay() {
 	Points = MakeCircleGrid(5, 2000);
 	iPoint = 0;
 
+	nextSpawnTime = 10;
+
 	
-	//for (FVector Point : Points) {
-	//	PlantTree(Point);
-	//}
 }
 
 void ALumberGameMode::Tick(float DeltaSeconds) {
 	Super::Tick(DeltaSeconds);
 	CurrentTime += DeltaSeconds;
 
-	if (CurrentTime >= nextSpawnTime && iPoint < Points.Num()) {
+	/*if (CurrentTime >= nextSpawnTime && nextSpawnTime != -1)
+	{
+		nextSpawnTime = -1;
+
+		for (FVector Point : Points) {
+			PlantTree(Point);
+		}
+	}*/
+	/*if (CurrentTime >= nextSpawnTime && iPoint < Points.Num()) {
 		Started = true;
 
 		PlantTree(Points[iPoint]);
 
 		nextSpawnTime = CurrentTime;
 		iPoint++;
-	}
+	}*/
 
 	//Cast<ATree::BuildTreeMeshRecursive()>TaskQueue.Pop()();
 }
