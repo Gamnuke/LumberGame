@@ -29,7 +29,18 @@ struct FChunkRenderData {
 	FVector2D Coordinates;
 
 	EChunkQuality ChunkQuality;
+	int ChunkIndex;
+};
 
+USTRUCT()
+struct FMeshData {
+	GENERATED_BODY()
+	TArray<FVector> Vertices;
+	TArray<int> Triangles;
+	TArray<FVector> Normals;
+	TArray<FVector2D> UVs;
+	TArray<FProcMeshTangent> Tangents;
+	TArray<FColor> Colors;
 };
 
 UCLASS()
@@ -59,13 +70,29 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
-	void RenderChunks();
+	void RenderChunks(FVector2D From);
+
+	void RemoveChunk(FVector2D ChunkLocationToRemove);
+
+	void RemoveChunk(FChunkRenderData* ChunkToRemove);
+
+	void GetNearestChunks(TArray<FVector2D>* NearestChunks);
 
 	FVector2D GetClosestChunkToPoint(FVector2D Point);
 
 	void RecursiveRender(FVector2D ChunkCoord, int Iteration);
 
-	void RenderSingleChunk(FVector2D ChunkCoord);
+	void RenderSingleChunk(FVector2D ChunkCoord, EChunkQuality Quality);
+
+	void UpdateChunk(FVector2D ChunkCoord, EChunkQuality Quality);
+
+	int DesignateChunkIndex(FVector2D ChunkLocation, EChunkQuality ChunkQuality);
+
+	void GetChunkRenderData(FMeshData* MeshData, FVector2D ChunkCoord, EChunkQuality Quality);
+
+	FChunkRenderData* CheckChunk(FVector2D ChunkLocation);
+
+	int CheckChunk(FVector2D ChunkLocation, FChunkRenderData** FoundRenderData);
 
 	void GetChunkSizesFromQuality(EChunkQuality Quality, int* NewChunkSize, int* NewTileSize);
 
