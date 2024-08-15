@@ -18,19 +18,16 @@
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraComponent.h"
 #include "LumberGameMode.h"
+#include "TreeClasses/TreeRoot.h"
 
-//#define AsyncMode ENamedThreads::AnyBackgroundThreadNormalTask
-#define AsyncMode ENamedThreads::GameThread
+#define Thread0 ENamedThreads::GameThread
+#define Thread1 ENamedThreads::AnyBackgroundHiPriTask
 
 // Sets default values
 ATree::ATree()
 {
 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = false;
-
-	/*CapsuleComponent = CreateDefaultSubobject<UCapsuleComponent>(FName("CapsuleComponent"));
-	SetRootComponent(CapsuleComponent);
-	CapsuleComponent->SetAngularDamping(1);*/
 
 	BoxCollision = CreateDefaultSubobject<UBoxComponent>(FName("BoxCollision"));
 	SetRootComponent(BoxCollision);
@@ -45,11 +42,6 @@ ATree::ATree()
 
 	ParticleSystem = CreateDefaultSubobject<UNiagaraComponent>(FName("ParticleSystem"));
 	ParticleSystem->AttachToComponent(GetRootComponent(), FAttachmentTransformRules::SnapToTargetNotIncludingScale);
-
-	/*if (Seed == 0) {
-		Seed = FMath::Rand();
-		UKismetMathLibrary::SetRandomStreamSeed(RandomStream, Seed);
-	}*/
 }
 
 // Called when the game starts or when spawned
@@ -57,42 +49,34 @@ void ATree::BeginPlay()
 {
 	Super::BeginPlay();
 
-	//RandRange(0.0f, 10.0f, RandomStream);
-	//SetActorTickEnabled(false);
-
-	// dont setup the tree if it isnt placed initially
-
-	//check(BoxCollision != NULL);
+	// Start generating tree from this branch if its the first branch
 	if (FirstTree) {
 		StartGeneration();
 	}
 }
 
+/*
+Called on the first branch
+*/
 void ATree::StartGeneration() {
-	double Time = FPlatformTime::Seconds();
-
-	UKismetMathLibrary::SetRandomStreamSeed(RandomStream, Seed);
-	UKismetMathLibrary::SetRandomStreamSeed(LeafStream, Seed);
-	UKismetMathLibrary::SetRandomStreamSeed(LogStream, Seed);
 
 	BoxCollision->SetSimulatePhysics(false);
-	ROWS *= 2;
+	ROWS *= TrunkHeightMultiplier;
 	BranchHeight = (ROWS - 1) * SECTION_HEIGHT;
 
-	//AsyncTask(AsyncMode, [this]() {
-		BuildTreeMesh(false);
-		//});
-
 	bPartOfRoot = true;
-
 	SetActorLocation(GetActorLocation() + GetActorUpVector() * BranchHeight / 2);
 
+	// Start generating the branch actors (spawning and collision only)
 	BuildTreeMeshRecursive(4, 0, this, true);
+
+	// Once all branches are spawned, recursively generate the meshes on all branches on a seperate thread
+	AsyncTask(Thread1, [this]() {
+		GenerateMeshRecursive(this);
+		TreeRoot->OnFinishGeneration();
+	});
+
 	SetupTree(this, BranchHeight, WIDTH);
-
-	Time = FPlatformTime::Seconds() - Time;
-	GEngine->AddOnScreenDebugMessage(FMath::Rand(), 5, FColor::Green, FString() + "Took " + FString::SanitizeFloat(Time) + " seconds to make tree");
-
 }
 
 
@@ -102,7 +86,7 @@ void ATree::BuildTreeMeshRecursive(int MaxDepth, int CurrentDepth, ATree *Parent
 	if (CurrentDepth > MaxDepth) { return; }
 
 	// get random number for how many branches branch off from the parent branch 
-	int iRange = RandRange(BranchNumMin, BranchNumMax - BranchNumMax * (CurrentDepth / MaxDepth), RandomStream);
+	int iRange = RandRange(BranchNumMin, BranchNumMax - BranchNumMax * (CurrentDepth / MaxDepth), TreeRoot->NumberStream);
 	if (Extension) {
 		iRange = 1;
 	}
@@ -111,17 +95,17 @@ void ATree::BuildTreeMeshRecursive(int MaxDepth, int CurrentDepth, ATree *Parent
 	for (int i = 0; i < iRange; i++) {
 
 		// chance to spawn a branch at side of log instead of end of log
-		bool SideStem = RandRange(0, 100, RandomStream) <= SideStemChance;
-		float StemAmount = RandRange(0.0f, 1.0f, RandomStream);
+		bool SideStem = RandRange(0, 100, TreeRoot->NumberStream) <= SideStemChance;
+		float StemAmount = RandRange(0.0f, 1.0f, TreeRoot->NumberStream);
 		if (!SideStem || CurrentDepth <= 2) {
 			StemAmount = 1;
 		}
 
 		// random angle for new branch
 		float Randomness = (60 - (60 * (CurrentDepth / MaxDepth)) * 0.7) * (CurrentDepth * 2/MaxDepth + StraightAmount);
-		float RandPitch = FRandRange(-Randomness, Randomness, RandomStream);
-		float RandYaw = FRandRange(-Randomness, Randomness, RandomStream);
-		float RandRow = FRandRange(-Randomness, Randomness, RandomStream);
+		float RandPitch = FRandRange(-Randomness, Randomness, TreeRoot->NumberStream);
+		float RandYaw = FRandRange(-Randomness, Randomness, TreeRoot->NumberStream);
+		float RandRow = FRandRange(-Randomness, Randomness, TreeRoot->NumberStream);
 		FVector NewTreeLoc = Parent->GetActorLocation() + Parent->GetActorUpVector() * (Parent->BranchHeight / 2) * StemAmount;
 		FRotator NewTreeRot = Parent->GetActorRotation() + FRotator(RandPitch, RandYaw, RandRow);
 		/*NewTreeRot = FRotator(
@@ -131,6 +115,7 @@ void ATree::BuildTreeMeshRecursive(int MaxDepth, int CurrentDepth, ATree *Parent
 		);*/
 
 		// spawns new branch and setups data
+
 		ATree* NewTree = GetWorld()->SpawnActor<ATree>(
 			this->GetClass(),
 			NewTreeLoc,
@@ -139,10 +124,10 @@ void ATree::BuildTreeMeshRecursive(int MaxDepth, int CurrentDepth, ATree *Parent
 
 		//NewTree->AttachToActor(Parent, FAttachmentTransformRules::KeepWorldTransform);
 		NewTree->WIDTH = FMath::Clamp(NewTree->WIDTH * (MaxDepth - CurrentDepth) / MaxDepth, NewTree->WIDTH / 4, NewTree->WIDTH);
-		NewTree->ROWS = FRandRange(NewTree->ROWS / (CurrentDepth + 1), NewTree->ROWS, RandomStream);
+		NewTree->ROWS = FRandRange(NewTree->ROWS / (CurrentDepth + 1), NewTree->ROWS, TreeRoot->NumberStream);
 		NewTree->BranchHeight = (NewTree->ROWS - 1) * NewTree->SECTION_HEIGHT;
 		
-
+		NewTree->TreeRoot = TreeRoot;
 		NewTree->SetupTree(NewTree, NewTree->BranchHeight, NewTree->WIDTH);
 		NewTree->SetActorRotation(NewTreeRot);
 		NewTree->AddActorWorldOffset(NewTree->GetActorUpVector() * NewTree->BranchHeight / 2);
@@ -152,27 +137,28 @@ void ATree::BuildTreeMeshRecursive(int MaxDepth, int CurrentDepth, ATree *Parent
 		NewTree->bPartOfRoot = true;
 
 		//chance to extend this branch, recursing with the same depth
-		bool ExtendThis = (RandRange(0, 100, RandomStream) <= ExtendChance);
+		bool ExtendThis = (RandRange(0, 100, TreeRoot->NumberStream) <= ExtendChance);
 		if (CurrentDepth == MaxDepth && !ExtendThis) {
+			ParticleSystem->SetWorldLocation(NewTreeLoc);
 			ParticleSystem->SetAutoActivate(true);
 			ParticleSystem->Activate(true);
 			ParticleSystem->ActivateSystem();
 			//ParticleSystem->ResetSystem();
 
-			//AsyncTask(AsyncMode, [NewTree]() {
-				NewTree->BuildTreeMesh(true);
-			//});
+			NewTree->bMakeLeaves = true;
+
 		}
 		else {
-			//AsyncTask(AsyncMode, [NewTree]() {
-				NewTree->BuildTreeMesh(false);
-			//});
+			NewTree->bMakeLeaves = false;
+
 		}
 		if (ExtendThis) {
-			Cast<ALumberGameMode>(GetWorld()->GetAuthGameMode())->TaskQueue.Enqueue(BuildTreeMeshRecursive(MaxDepth, CurrentDepth, NewTree, true));
+			//Cast<ALumberGameMode>(GetWorld()->GetAuthGameMode())->TaskQueue.Enqueue();
+			BuildTreeMeshRecursive(MaxDepth, CurrentDepth, NewTree, true);
 		}
 		else {
-			Cast<ALumberGameMode>(GetWorld()->GetAuthGameMode())->TaskQueue.Enqueue(BuildTreeMeshRecursive(MaxDepth, CurrentDepth + 1, NewTree, false));
+			//Cast<ALumberGameMode>(GetWorld()->GetAuthGameMode())->TaskQueue.Enqueue();
+			BuildTreeMeshRecursive(MaxDepth, CurrentDepth + 1, NewTree, false);
 		}
 
 	}
@@ -183,14 +169,12 @@ void ATree::BuildTreeMesh(bool bBuildLeaves) {
 
 	if (bBuildLeaves == false) {
 		// make empty mesh section as placeholder for leaves
-		//AsyncTask(ENamedThreads::GameThread, [this]() {
+		AsyncTask(Thread0, [this]() {
 			Mesh->CreateMeshSection(0, TArray<FVector>(), TArray<int32>(), TArray<FVector>(), TArray<FVector2D>(), TArray<FColor>(), TArray<FProcMeshTangent>(), false);
-		//});
+		});
 	}
 	else {
-		//AsyncTask(AsyncMode, [this]() {
-			MakeLeaves();
-		//});
+		MakeLeaves();
 	}
 
 	TArray<FVector> Vertices;
@@ -217,8 +201,8 @@ void ATree::BuildTreeMesh(bool bBuildLeaves) {
 			//CollisionVert.Add(newVertex);
 
 			// add randomness to this vertex's location
-			float randX = FRandRange(-SECTION_HEIGHT / R, SECTION_HEIGHT / R, LogStream);
-			float randY = FRandRange(-SECTION_HEIGHT / R, SECTION_HEIGHT / R, LogStream);
+			float randX = FRandRange(-SECTION_HEIGHT / R, SECTION_HEIGHT / R, TreeRoot->NumberStream);
+			float randY = FRandRange(-SECTION_HEIGHT / R, SECTION_HEIGHT / R, TreeRoot->NumberStream);
 			float randZ = 0;
 			newVertex += FVector(randX, randY, randZ);
 			if (Angle == 0) {
@@ -283,24 +267,31 @@ void ATree::BuildTreeMesh(bool bBuildLeaves) {
 
 	UKismetProceduralMeshLibrary::CalculateTangentsForMesh(Vertices, Triangles, UVs, Normals, Tangents);
 
-	//AsyncTask(ENamedThreads::GameThread, [this, Vertices, Triangles,Normals,UVs,Tangents, bBuildLeaves]() {
+	// Store mesh info to this branch
+	FProcMeshInfo NewMeshInfo = FProcMeshInfo();
+	NewMeshInfo.Index = LogMeshIndex;
+	NewMeshInfo.Vertices = Vertices;
+	NewMeshInfo.Triangles = Triangles;
+	NewMeshInfo.Normals = Normals;
+	NewMeshInfo.UVs = UVs;
+	NewMeshInfo.Colors = TArray<FColor>();
+	NewMeshInfo.MeshTangents = Tangents;
+	BranchMeshInfo = NewMeshInfo;
+
+	AsyncTask(Thread0, [this]() {
 		Mesh->CreateMeshSection(
-			LogMeshIndex,
-			Vertices,
-			Triangles,
-			Normals,
-			UVs,
-			TArray<FColor>(),
-			Tangents,
+			BranchMeshInfo.Index,
+			BranchMeshInfo.Vertices,
+			BranchMeshInfo.Triangles,
+			BranchMeshInfo.Normals,
+			BranchMeshInfo.UVs,
+			BranchMeshInfo.Colors,
+			BranchMeshInfo.MeshTangents,
 			false
 		);
 
-
 		Mesh->SetMaterial(LogMeshIndex, LogMaterial);
-
-		
-
-	//});
+	});
 }
 
 /* creates geometry at index 0 for this tree */
@@ -317,67 +308,146 @@ void ATree::MakeLeaves()
 
 	for (int i = 0; i < NumLeaves; i++) {
 		// get a random location for the leaf
-		float RandLeafX = FRandRange(-Range, Range, LeafStream);
-		float RandLeafY = FRandRange(-Range, Range, LeafStream);
-		float RandLeafZ = FRandRange(-2*Range, Range, LeafStream);
-		FVector LeafPoint = FVector(RandLeafX, RandLeafY, BranchHeight + RandLeafZ);
+		float RandLeafX = FRandRange(-Range, Range, TreeRoot->NumberStream);
+		float RandLeafY = FRandRange(-Range, Range, TreeRoot->NumberStream);
+		float RandLeafZ = FRandRange(-2*Range, Range, TreeRoot->NumberStream);
 
 		// get a random normal for the leaf's rotation
-		float RandLeafNormX = FRandRange(-1.0f, 1.0f, LeafStream);
-		float RandLeafNormY = FRandRange(-1.0f, 1.0f, LeafStream);
-		float RandLeafNormZ = FRandRange(-1.0f, 1.0f, LeafStream);
-		FVector RandomLeafNormal = FVector(RandLeafNormX, RandLeafNormY, RandLeafNormZ).GetSafeNormal();
-		LeafNormals.Add(RandomLeafNormal);
+		float RandLeafNormX = FRandRange(-1.0f, 1.0f, TreeRoot->NumberStream);
+		float RandLeafNormY = FRandRange(-1.0f, 1.0f, TreeRoot->NumberStream);
+		float RandLeafNormZ = FRandRange(-1.0f, 1.0f, TreeRoot->NumberStream);
 
-		// projects a random point to the plane to get the rotation
-		FVector next_vertex_offset = FVector::VectorPlaneProject(
-			FVector(FRandRange(-1.0f, 1.0f, LeafStream), FRandRange(-1.0f, 1.0f, LeafStream), FRandRange(-1.0f, 1.0f, LeafStream)),
-			RandomLeafNormal
-		).GetSafeNormal() * LeafSize;
-		//DrawDebugPoint(GetWorld(), next_vertex_offset, 4, FColor::Green, false, 10, 6);
+		/* get 3 random normals */
 
-		TArray<int32> Verts;
-		int Angle = 0;
-		while (Angle < 360) {
-			next_vertex_offset = UKismetMathLibrary::RotateAngleAxis(next_vertex_offset, 90, RandomLeafNormal);
+		// first normal calculated by random numbers
+		TArray<FVector> RandomNormals;
+		FVector RandomNormal1 = FVector(RandLeafNormX, RandLeafNormY, RandLeafNormZ).GetSafeNormal();
+		RandomNormals.Add(RandomNormal1);
 
-			Verts.Add(LeafVertices.Add(next_vertex_offset + LeafPoint));
+		// second normal calculated by getting vector perpendicular to normal 1 in any direction
+		FVector RandomNormal2 = FVector::VectorPlaneProject(
+			FVector(FRandRange(-1.0f, 1.0f, TreeRoot->NumberStream), FRandRange(-1.0f, 1.0f, TreeRoot->NumberStream), FRandRange(-1.0f, 1.0f, TreeRoot->NumberStream)),
+			RandomNormal1
+		).GetSafeNormal();
+		RandomNormals.Add(RandomNormal2);
 
-			if (Angle == 0) {
-				LeafUVs.Add(FVector2D(0, 0));
+		// get third normal by getting vector perpendicular to BOTH vector 1 and 2, only one solution
+		FVector RandomNormal3 = UKismetMathLibrary::RotateAngleAxis(RandomNormal1, 90, RandomNormal2);
+		RandomNormals.Add(RandomNormal3);
+
+		// for each position for a leaf, make 3 planes of leaves at perpendicular angles to eachother
+		for (int j = 0; j < 3; j++)
+		{
+			LeafNormals.Add(RandomNormals[j]);
+
+			FVector LeafPoint = FVector(RandLeafX, RandLeafY, BranchHeight + RandLeafZ);
+			int leafSizeMult = FMath::RandRange(0.5, 1.5);
+
+			// projects a random point to the plane to get the location of the first point of the leaf vertex
+			FVector next_vertex_offset = FVector::VectorPlaneProject(
+				FVector(FRandRange(-1.0f, 1.0f, TreeRoot->NumberStream), FRandRange(-1.0f, 1.0f, TreeRoot->NumberStream), FRandRange(-1.0f, 1.0f, TreeRoot->NumberStream)),
+				RandomNormals[j]
+			).GetSafeNormal() * LeafSize * leafSizeMult;
+			//DrawDebugPoint(GetWorld(), next_vertex_offset, 4, FColor::Green, false, 10, 6);
+
+			TArray<int32> Verts;
+			int Angle = 0;
+			while (Angle < 360) {
+				next_vertex_offset = UKismetMathLibrary::RotateAngleAxis(next_vertex_offset, 90, RandomNormals[j]);
+
+				Verts.Add(LeafVertices.Add(next_vertex_offset + LeafPoint));
+
+				if (Angle == 0) {
+					LeafUVs.Add(FVector2D(0, 0));
+				}
+				else if (Angle == 90) {
+					LeafUVs.Add(FVector2D(1, 0));
+				}
+				else if (Angle == 180) {
+					LeafUVs.Add(FVector2D(1, 1));
+				}
+				else if (Angle == 270) {
+					LeafUVs.Add(FVector2D(0, 1));
+				}
+				Angle += 90;
 			}
-			else if (Angle == 90) {
-				LeafUVs.Add(FVector2D(1, 0));
-			}
-			else if (Angle == 180) {
-				LeafUVs.Add(FVector2D(1, 1));
-			}
-			else if (Angle == 270) {
-				LeafUVs.Add(FVector2D(0, 1));
-			}
-			Angle += 90;
+
+			TArray<int32> Tris;
+			UKismetProceduralMeshLibrary::ConvertQuadToTriangles(Tris, Verts[0], Verts[1], Verts[2], Verts[3]);
+			LeafTriangles.Append(Tris);
 		}
-
-		TArray<int32> Tris;
-		UKismetProceduralMeshLibrary::ConvertQuadToTriangles(Tris, Verts[0], Verts[1], Verts[2], Verts[3]);
-		LeafTriangles.Append(Tris);
+		
 	}
 	UKismetProceduralMeshLibrary::CalculateTangentsForMesh(LeafVertices, LeafTriangles, LeafUVs, LeafNormals, LeafTangents);
 
-	//AsyncTask(ENamedThreads::GameThread, [this, LeafVertices, LeafTriangles, LeafNormals, LeafUVs, LeafTangents]() {
+	// Store mesh info to this branch
+	FProcMeshInfo NewMeshInfo = FProcMeshInfo();
+	NewMeshInfo.Index = LeafMeshIndex;
+	NewMeshInfo.Vertices = LeafVertices;
+	NewMeshInfo.Triangles = LeafTriangles;
+	NewMeshInfo.Normals = LeafNormals;
+	NewMeshInfo.UVs = LeafUVs;
+	NewMeshInfo.Colors = TArray<FColor>();
+	NewMeshInfo.MeshTangents = LeafTangents;
+	LeafMeshInfo = NewMeshInfo;
+
+	AsyncTask(Thread0, [this]() {
 		Mesh->CreateMeshSection(
-			LeafMeshIndex,
-			LeafVertices,
-			LeafTriangles,
-			LeafNormals,
-			LeafUVs,
-			TArray<FColor>(),
-			LeafTangents,
+			LeafMeshInfo.Index,
+			LeafMeshInfo.Vertices,
+			LeafMeshInfo.Triangles,
+			LeafMeshInfo.Normals,
+			LeafMeshInfo.UVs,
+			LeafMeshInfo.Colors,
+			LeafMeshInfo.MeshTangents,
 			false
 		);
 
 		Mesh->SetMaterial(LeafMeshIndex, LeafMaterial);
-	//});
+	});
+}
+
+/*
+Recursively goes through branches' children and generates mesh using the mesh information stored in each branch
+*/
+void ATree::GenerateMeshRecursive(ATree* BranchToGenerate) {
+
+	TArray<AActor*> TreeChildren;
+	BranchToGenerate->GetAttachedActors(TreeChildren);
+
+	for (AActor* ChildActor : TreeChildren) {
+		ATree* ChildBranch = Cast<ATree>(ChildActor);
+		ChildBranch->GenerateMeshRecursive(ChildBranch);
+	}
+
+	BranchToGenerate->BuildTreeMesh(BranchToGenerate->bMakeLeaves);
+
+	//// Generate branch mesh
+	//Mesh->CreateMeshSection(
+	//	BranchMeshInfo.Index,
+	//	BranchMeshInfo.Vertices,
+	//	BranchMeshInfo.Triangles,
+	//	BranchMeshInfo.Normals,
+	//	BranchMeshInfo.UVs,
+	//	BranchMeshInfo.Colors,
+	//	BranchMeshInfo.MeshTangents,
+	//	false
+	//);
+
+	//Mesh->CreateMeshSection(
+	//	LeafMeshInfo.Index,
+	//	LeafMeshInfo.Vertices,
+	//	LeafMeshInfo.Triangles,
+	//	LeafMeshInfo.Normals,
+	//	LeafMeshInfo.UVs,
+	//	LeafMeshInfo.Colors,
+	//	LeafMeshInfo.MeshTangents,
+	//	false
+	//);
+
+	//Mesh->SetMaterial(LogMeshIndex, LogMaterial);
+	//Mesh->SetMaterial(LeafMeshIndex, LeafMaterial);
+
 }
 
 /* cuts the tree */
@@ -393,7 +463,7 @@ void ATree::CutTree(FVector CutLocation, UProceduralMeshComponent *ProcMesh, ATr
 
 	// get closest existing point to the desired cut location and check if that point is within auto cutting bounds
 	int FoundCut = 0;
-	float MinimumDistance = INT32_MAX;
+	float MinimumDistance = FLT_MAX;
 	for (int i = 0; i < ExistingCuts.Num(); i++)
 	{
 		// Get distance in world space
@@ -484,10 +554,8 @@ void ATree::CutTree(FVector CutLocation, UProceduralMeshComponent *ProcMesh, ATr
 
 	// spawn and setup the upper half of the log and alter the bottom half of the log
 	ATree* NewTree = GetWorld()->SpawnActor<ATree>(this->GetClass(), CutWorldLocation, OtherRotation);
-	NewTree->RandomStream = RandomStream;
-	NewTree->LogStream = LogStream;
-	NewTree->LeafStream = LeafStream;
 
+	NewTree->TreeRoot = TreeRoot;
 	NewTree->BranchHeight = TopSegLength;
 	this->BranchHeight = BottomSegLength;
 	NewTree->WIDTH = this->WIDTH;
@@ -624,17 +692,17 @@ void ATree::Tick(float DeltaTime)
 }
 
 int ATree::RandRange(int Min, int Max, FRandomStream &Stream) {
-	int NewNum = UKismetMathLibrary::RandomIntegerInRangeFromStream(Min, Max, Stream);
+	int NewNum = UKismetMathLibrary::RandomIntegerInRangeFromStream(Stream, Min, Max);
 	//GEngine->AddOnScreenDebugMessage(FMath::Rand(), 10, FColor::Green, FString::FromInt(NewNum));
 	return NewNum;
-	return RandomStream.RandRange(Min, Max);
+	//return RandomStream.RandRange(Min, Max);
 }
 
 float ATree::FRandRange(float Min, float Max, FRandomStream& Stream) {
-	float NewNum = UKismetMathLibrary::RandomFloatInRangeFromStream(Min, Max, Stream);
+	float NewNum = UKismetMathLibrary::RandomFloatInRangeFromStream(Stream, Min, Max);
 	//GEngine->AddOnScreenDebugMessage(FMath::Rand(), 10, FColor::Green, FString::SanitizeFloat(NewNum));
 	return NewNum;
-	return RandomStream.FRandRange(Min, Max);
+	//return RandomStream.FRandRange(Min, Max);
 }
 
 

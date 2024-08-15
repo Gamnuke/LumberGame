@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Containers/Queue.h"
+#include "ProceduralMeshComponent.h"
 #include "Tree.generated.h"
 
 class UNiagaraComponent;
@@ -15,6 +16,7 @@ class USceneComponent;
 class UCapsuleComponent;
 class UStaticMeshComponent;
 class UBoxComponent;
+class ATreeRoot;
 struct FRandomStream;
 
 USTRUCT(BlueprintType)
@@ -27,6 +29,19 @@ struct FCutData {
 
 	UPROPERTY(BlueprintReadWrite, VisibleAnywhere)
 	int CutAmount;
+};
+
+USTRUCT()
+struct FProcMeshInfo {
+	GENERATED_BODY()
+
+	int Index;
+	TArray<FVector> Vertices;
+	TArray<int> Triangles;
+	TArray<FVector> Normals;
+	TArray<FVector2D> UVs;
+	TArray<FColor> Colors;
+	TArray<FProcMeshTangent> MeshTangents;
 };
 
 UCLASS()
@@ -104,6 +119,10 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	bool bHasLeaves = false;
 
+	// allows the trunk of the tree to be changed, 1 = same size as branches
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	float TrunkHeightMultiplier = 1.5;
+
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	UNiagaraComponent* ParticleSystem;
 
@@ -127,15 +146,14 @@ public:
 	// Asyncing tasks make trees unique regardless of seed because it accesses a random value at different times
 	// therefore skewing actual random variables.
 	// Solution to make a stream for each Async task
-	FRandomStream RandomStream;
-	FRandomStream LeafStream;
-	FRandomStream LogStream;
 
 public:
 	// Functions
  
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
+
+	void GenerateMeshRecursive(ATree* BranchToGenerate);
 
 	void CutTree(FVector CutLocation, UProceduralMeshComponent* ProcMesh, ATree* Tree);
 	void WeldChildrenRecursive(ATree* Root, ATree* NextTree);
@@ -175,13 +193,24 @@ public:
 	UPROPERTY(BlueprintReadOnly, VisibleAnywhere)
 		bool bPartOfRoot;
 
+	UPROPERTY(BlueprintReadOnly, VisibleAnywhere)
+		ATreeRoot* TreeRoot;
+
+
+
 
 
 public:
 	// Variables for self
 
+
 	// Existing cuts for this branch in relative position
 	UPROPERTY(BlueprintReadWrite, VisibleAnywhere)
 	TArray<FCutData> ExistingCuts;
+
+	// Mesh information stored for mesh generation
+	FProcMeshInfo BranchMeshInfo;
+	FProcMeshInfo LeafMeshInfo;
+	bool bMakeLeaves = false;
 
 };

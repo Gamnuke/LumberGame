@@ -8,9 +8,8 @@ public class LumberEditorTarget : TargetRules
 	public LumberEditorTarget(TargetInfo Target) : base(Target)
 	{
 		Type = TargetType.Editor;
-		DefaultBuildSettings = BuildSettingsVersion.V2;
 		ExtraModuleNames.Add("Lumber");
-        DefaultBuildSettings = BuildSettingsVersion.V4;
-        IncludeOrderVersion = EngineIncludeOrderVersion.Unreal5_3;
+        DefaultBuildSettings = BuildSettingsVersion.Latest;
+        IncludeOrderVersion = EngineIncludeOrderVersion.Latest;
     }
 }

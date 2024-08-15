@@ -1,0 +1,76 @@
+/* creates geometry at index 0 for this tree */
+void ATree::MakeLeaves()
+{
+
+	// make polygons for the leaves
+	TArray<FVector> LeafVertices;
+	TArray<int32> LeafTriangles;
+	TArray<FVector2D> LeafUVs;
+	TArray<FVector> LeafNormals;
+	TArray<FProcMeshTangent> LeafTangents;
+	float Range = RandLeafThreshold * BranchHeight;
+
+	for (int i = 0; i < NumLeaves; i++) {
+		// get a random location for the leaf
+		float RandLeafX = FRandRange(-Range, Range, LeafStream);
+		float RandLeafY = FRandRange(-Range, Range, LeafStream);
+		float RandLeafZ = FRandRange(-2*Range, Range, LeafStream);
+		FVector LeafPoint = FVector(RandLeafX, RandLeafY, BranchHeight + RandLeafZ);
+
+		// get a random normal for the leaf's rotation
+		float RandLeafNormX = FRandRange(-1.0f, 1.0f, LeafStream);
+		float RandLeafNormY = FRandRange(-1.0f, 1.0f, LeafStream);
+		float RandLeafNormZ = FRandRange(-1.0f, 1.0f, LeafStream);
+		FVector RandomLeafNormal = FVector(RandLeafNormX, RandLeafNormY, RandLeafNormZ).GetSafeNormal();
+		LeafNormals.Add(RandomLeafNormal);
+
+		// projects a random point to the plane to get the rotation
+		FVector next_vertex_offset = FVector::VectorPlaneProject(
+			FVector(FRandRange(-1.0f, 1.0f, LeafStream), FRandRange(-1.0f, 1.0f, LeafStream), FRandRange(-1.0f, 1.0f, LeafStream)),
+			RandomLeafNormal
+		).GetSafeNormal() * LeafSize;
+		//DrawDebugPoint(GetWorld(), next_vertex_offset, 4, FColor::Green, false, 10, 6);
+
+		TArray<int32> Verts;
+		int Angle = 0;
+		while (Angle < 360) {
+			next_vertex_offset = UKismetMathLibrary::RotateAngleAxis(next_vertex_offset, 90, RandomLeafNormal);
+
+			Verts.Add(LeafVertices.Add(next_vertex_offset + LeafPoint));
+
+			if (Angle == 0) {
+				LeafUVs.Add(FVector2D(0, 0));
+			}
+			else if (Angle == 90) {
+				LeafUVs.Add(FVector2D(1, 0));
+			}
+			else if (Angle == 180) {
+				LeafUVs.Add(FVector2D(1, 1));
+			}
+			else if (Angle == 270) {
+				LeafUVs.Add(FVector2D(0, 1));
+			}
+			Angle += 90;
+		}
+
+		TArray<int32> Tris;
+		UKismetProceduralMeshLibrary::ConvertQuadToTriangles(Tris, Verts[0], Verts[1], Verts[2], Verts[3]);
+		LeafTriangles.Append(Tris);
+	}
+	UKismetProceduralMeshLibrary::CalculateTangentsForMesh(LeafVertices, LeafTriangles, LeafUVs, LeafNormals, LeafTangents);
+
+	//AsyncTask(ENamedThreads::GameThread, [this, LeafVertices, LeafTriangles, LeafNormals, LeafUVs, LeafTangents]() {
+		Mesh->CreateMeshSection(
+			LeafMeshIndex,
+			LeafVertices,
+			LeafTriangles,
+			LeafNormals,
+			LeafUVs,
+			TArray<FColor>(),
+			LeafTangents,
+			false
+		);
+
+		Mesh->SetMaterial(LeafMeshIndex, LeafMaterial);
+	//});
+}

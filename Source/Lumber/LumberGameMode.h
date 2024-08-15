@@ -7,6 +7,7 @@
 #include "LumberGameMode.generated.h"
 
 class ATree;
+class ATreeRoot;
 
 UCLASS(minimalapi)
 class ALumberGameMode : public AGameModeBase
@@ -18,7 +19,7 @@ public:
 	virtual void BeginPlay();
 	virtual void Tick(float DeltaSeconds) override;
 
-	TQueue<void> TaskQueue;
+	//TQueue<void> TaskQueue;
 
 	bool Started = false;
 	float CurrentTime = 0;
@@ -27,10 +28,21 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	TArray<TSubclassOf<ATree>> TreeClasses;
 
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	TSubclassOf<ATreeRoot> TreeRootBlueprintClass;
+
+	// variable to hold points where trees will spawn
+	TArray<FVector> Points;
+	int iPoint;
+
+	float nextSpawnTime = 0;
+
+	FILE *file;
+
 // Functions
 public:
 	TArray<FVector> MakeCircleGrid(int HalfDimesion, int GapSize);
-	void PlantTrees();
+	void PlantTree(FVector LocationToPlant);
 	
 };
 
