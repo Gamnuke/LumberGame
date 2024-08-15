@@ -4,15 +4,23 @@
 #include "Terrain.h"
 #include "KismetProceduralMeshLibrary.h"
 
+
+#define GamePriority ENamedThreads::GameThread 
+#define BackgroundPriority ENamedThreads::AnyBackgroundHiPriTask
+
 // Sets default values
 ATerrain::ATerrain()
 {
+	
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 
 	// Construct mesh component
 	Mesh = CreateDefaultSubobject<UProceduralMeshComponent>(FName("Mesh"));
 	SetRootComponent(Mesh);
+	
+	CollisionMesh = CreateDefaultSubobject<UProceduralMeshComponent>(FName("CollisionMesh"));
+	CollisionMesh->AttachToComponent(Mesh, FAttachmentTransformRules::KeepRelativeTransform);
 
 	totalChunkSize = (chunkSize) * tileSize;
 }
@@ -24,6 +32,9 @@ void ATerrain::BeginPlay()
 	ActorToGenerateFrom = GetWorld()->GetFirstPlayerController()->GetPawn();
 	totalChunkSize = (chunkSize) * tileSize;
 
+	Mesh->bUseAsyncCooking = true;
+	CollisionMesh->bUseAsyncCooking = true;
+
 	// Set random seed for stream
 	Stream.GenerateNewSeed();
 	for (int i = 0; i < 1000; i++)
@@ -32,7 +43,7 @@ void ATerrain::BeginPlay()
 		//GEngine->AddOnScreenDebugMessage(i, 10, FColor::Purple, FString::FromInt(SeedArray[i]));
 	}
 
-	/*AsyncTask(ENamedThreads::AnyBackgroundHiPriTask, [this]() {
+	/*AsyncTask(BackgroundPriority, [this]() {
 		RecursiveRender(FVector2D(), 0);
 	});*/
 	//RenderSingleChunk(FVector2D(), 0);
@@ -98,7 +109,7 @@ Renders chunks around a given point on a seperate thread, based on render distan
 Algorithm renders chunks in a grid, not from the point of the player
 */
 void ATerrain::RenderChunks(FVector2D From) {
-	AsyncTask(ENamedThreads::AnyBackgroundHiPriTask, [this, From]() {
+	AsyncTask(BackgroundPriority, [this, From]() {
 		// logic for rendering and deleting far chunks goes here
 
 		// get array of chunk locations around player
@@ -130,11 +141,11 @@ void ATerrain::RenderChunks(FVector2D From) {
 
 			// Haven't found chunk or the LODs dont match
 			if (FoundChunk == nullptr) {
-				GEngine->AddOnScreenDebugMessage(FMath::Rand(), 10, FColor::Magenta, FString("Creating mesh at ") + ChunkToCheck.ToString());
+				GEngine->AddOnScreenDebugMessage(FMath::Rand(), RenderCheckPeriod * 2, FColor::MakeRandomColor(), FString("Creating mesh at ") + ChunkToCheck.ToString());
 				RenderSingleChunk(ChunkToCheck, LOD);
 			}
 			else if (FoundChunk->ChunkQuality != LOD) {
-				GEngine->AddOnScreenDebugMessage(FMath::Rand(), 10, FColor::Purple, FString("Updating mesh at ") + FoundChunk->Coordinates.ToString());
+				GEngine->AddOnScreenDebugMessage(FMath::Rand(), RenderCheckPeriod * 2, FColor::MakeRandomColor(), FString("Updating mesh at ") + FoundChunk->Coordinates.ToString());
 				UpdateChunk(ChunkToCheck, LOD);
 			}
 		}
@@ -155,7 +166,7 @@ void ATerrain::RemoveChunk(FVector2D ChunkLocationToRemove) {
 	//// Check if chunk is found in memory
 	//FChunkRenderData* FoundChunk = CheckChunk(ChunkLocationToRemove);
 
-	//AsyncTask(ENamedThreads::GameThread, [this, FoundChunk]() {
+	//AsyncTask(GamePriority, [this, FoundChunk]() {
 	//	if (FoundChunk != nullptr) {
 	//		Mesh->ClearMeshSection(FoundChunk->ChunkIndex);
 	//		Chunks.RemoveAt(FoundChunk->ChunkIndex, EAllowShrinking::No);
@@ -167,7 +178,7 @@ void ATerrain::RemoveChunk(FVector2D ChunkLocationToRemove) {
 Removes chunk with given chunk data, if chunk data is not null
 */
 void ATerrain::RemoveChunk(FChunkRenderData *ChunkToRemove) {
-	/*AsyncTask(ENamedThreads::GameThread, [this, ChunkToRemove]() {
+	/*AsyncTask(GamePriority, [this, ChunkToRemove]() {
 		if (ChunkToRemove != nullptr) {
 			Mesh->ClearMeshSection(ChunkToRemove->ChunkIndex);
 			Chunks.RemoveAt(ChunkToRemove->ChunkIndex, EAllowShrinking::No);
@@ -246,14 +257,27 @@ void ATerrain::RenderSingleChunk(FVector2D ChunkCoord, EChunkQuality Quality) {
 	FMeshData NewMeshData;
 	GetChunkRenderData(&NewMeshData, ChunkCoord, Quality);
 
-	// Finally create the mesh on proc mesh component on game thread
-	AsyncTask(ENamedThreads::GameThread, [this, ChunkCoord, NewMeshData, Quality]() {
-		// Get index place for this new chunk
-		int DesignatedIndex = DesignateChunkIndex(ChunkCoord, Quality);
+	// Create seperate mesh data for collision if LOD is high
+	FMeshData NewMeshCollisionData;
+	if (Quality == EChunkQuality::High) {
+		GetChunkRenderData(&NewMeshCollisionData, ChunkCoord, EChunkQuality::Collision);
+	}
 
-		Mesh->CreateMeshSection(DesignatedIndex, NewMeshData.Vertices, NewMeshData.Triangles, NewMeshData.Normals, NewMeshData.UVs, NewMeshData.Colors, NewMeshData.Tangents, Quality == EChunkQuality::High);
+	// Get index place for this new chunk
+	int DesignatedIndex = DesignateChunkIndex(ChunkCoord, Quality);
+
+	CreateMeshSection(Mesh, DesignatedIndex, NewMeshData.Vertices, NewMeshData.Triangles, NewMeshData.Normals, NewMeshData.UVs, NewMeshData.Colors, NewMeshData.Tangents, false);
+	if (Quality == EChunkQuality::High) {
+		CreateMeshSection(CollisionMesh, DesignatedIndex, NewMeshCollisionData.Vertices, NewMeshCollisionData.Triangles, NewMeshCollisionData.Normals, NewMeshCollisionData.UVs, NewMeshCollisionData.Colors, NewMeshCollisionData.Tangents, true);
+	}
+
+	//Mesh->SetMaterial(DesignatedIndex, TerrainMaterial);
+	//Chunks[DesignatedIndex].RenderState = EChunkRenderState::Rendered;
+	// Finally create the mesh on proc mesh component on game thread
+	AsyncTask(GamePriority, [this, ChunkCoord, NewMeshData, Quality, NewMeshCollisionData, DesignatedIndex]() {
 		Mesh->SetMaterial(DesignatedIndex, TerrainMaterial);
-		Chunks[DesignatedIndex].RenderState = EChunkRenderState::Rendered;
+		
+		
 	});
 }
 
@@ -268,20 +292,38 @@ void ATerrain::UpdateChunk(FVector2D ChunkCoord, EChunkQuality NewQuality) {
 
 	// LODs are the same or couldnt find chunk, nothing to do here
 	if (FoundChunk == nullptr || FoundChunk->ChunkQuality == NewQuality) { return; }
+	FoundChunk->ChunkQuality = NewQuality;
+	//FoundChunk->RenderState = EChunkRenderState::Rendering;
 
 	// Get chunk mesh data
 	FMeshData NewMeshData;
 	GetChunkRenderData(&NewMeshData, ChunkCoord, NewQuality);
 
-	// Finally delete the original mesh and add as new mesh section
-	AsyncTask(ENamedThreads::GameThread, [this, FoundChunkIndex, NewQuality, NewMeshData]() {
+	// Create seperate mesh data for collision if LOD is high
+	FMeshData NewMeshCollisionData;
+	if (NewQuality == EChunkQuality::High) {
+		GetChunkRenderData(&NewMeshCollisionData, ChunkCoord, EChunkQuality::Collision);
+	}
 
-		// Delete old chunk
-		Mesh->ClearMeshSection(FoundChunkIndex);
-		Mesh->CreateMeshSection(FoundChunkIndex, NewMeshData.Vertices, NewMeshData.Triangles, NewMeshData.Normals, NewMeshData.UVs, NewMeshData.Colors, NewMeshData.Tangents, NewQuality == EChunkQuality::High);
+	CreateMeshSection(Mesh, FoundChunkIndex, NewMeshData.Vertices, NewMeshData.Triangles, NewMeshData.Normals, NewMeshData.UVs, NewMeshData.Colors, NewMeshData.Tangents, false);
+
+	if (NewQuality == EChunkQuality::High) {
+		CreateMeshSection(CollisionMesh, FoundChunkIndex, NewMeshCollisionData.Vertices, NewMeshCollisionData.Triangles, NewMeshCollisionData.Normals, NewMeshCollisionData.UVs, NewMeshCollisionData.Colors, NewMeshCollisionData.Tangents, true);
+	}
+
+	//FoundChunk->RenderState = EChunkRenderState::Rendered;
+
+	// Finally delete the original mesh and add as new mesh section
+	AsyncTask(GamePriority, [this, FoundChunkIndex, NewQuality, NewMeshData, NewMeshCollisionData]() {
 		Mesh->SetMaterial(FoundChunkIndex, TerrainMaterial);
-		Chunks[FoundChunkIndex].RenderState = EChunkRenderState::Rendered;
-		Chunks[FoundChunkIndex].ChunkQuality = NewQuality;
+
+		//// Delete old chunk
+		//Mesh->ClearMeshSection(FoundChunkIndex);
+		//CollisionMesh->ClearMeshSection(FoundChunkIndex);
+
+		
+		//Chunks[FoundChunkIndex].RenderState = EChunkRenderState::Rendered;
+		//Chunks[FoundChunkIndex].ChunkQuality = NewQuality;
 	});
 }
 
@@ -384,8 +426,102 @@ void ATerrain::GetChunkSizesFromQuality(EChunkQuality Quality, int *NewChunkSize
 		*NewChunkSize = chunkSize;
 		*NewTileSize = tileSize;
 		break;
+	case Collision:
+		*NewChunkSize = chunkSize;
+		*NewTileSize = tileSize;
+		break;
 	default:
 		break;
 	}
+}
+
+/*
+Own implementation of ProceduralMeshComponent's CreateMeshSection
+*/
+void ATerrain::CreateMeshSection(UProceduralMeshComponent *ProcMesh, int32 SectionIndex, const TArray<FVector>& Vertices, const TArray<int32>& Triangles, const TArray<FVector>& Normals, const TArray<FVector2D>& UV0, const TArray<FVector2D>& UV1, const TArray<FVector2D>& UV2, const TArray<FVector2D>& UV3, const TArray<FColor>& VertexColors, const TArray<FProcMeshTangent>& Tangents, bool bCreateCollision)
+{
+	// Reset this section (in case it already existed)
+	FProcMeshSection NewSection;
+
+	// Copy data to vertex buffer
+	const int32 NumVerts = Vertices.Num();
+	NewSection.ProcVertexBuffer.Reset();
+	NewSection.ProcVertexBuffer.AddUninitialized(NumVerts);
+	for (int32 VertIdx = 0; VertIdx < NumVerts; VertIdx++)
+	{
+		FProcMeshVertex& Vertex = NewSection.ProcVertexBuffer[VertIdx];
+
+		Vertex.Position = Vertices[VertIdx];
+		Vertex.Normal = (Normals.Num() == NumVerts) ? Normals[VertIdx] : FVector(0.f, 0.f, 1.f);
+		Vertex.UV0 = (UV0.Num() == NumVerts) ? UV0[VertIdx] : FVector2D(0.f, 0.f);
+		Vertex.UV1 = (UV1.Num() == NumVerts) ? UV1[VertIdx] : FVector2D(0.f, 0.f);
+		Vertex.UV2 = (UV2.Num() == NumVerts) ? UV2[VertIdx] : FVector2D(0.f, 0.f);
+		Vertex.UV3 = (UV3.Num() == NumVerts) ? UV3[VertIdx] : FVector2D(0.f, 0.f);
+		Vertex.Color = (VertexColors.Num() == NumVerts) ? VertexColors[VertIdx] : FColor(255, 255, 255);
+		Vertex.Tangent = (Tangents.Num() == NumVerts) ? Tangents[VertIdx] : FProcMeshTangent();
+
+		// Update bounding box
+		NewSection.SectionLocalBox += Vertex.Position;
+	}
+
+	// Get triangle indices, clamping to vertex range
+	const int32 MaxIndex = NumVerts - 1;
+	const auto GetTriIndices = [&Triangles, MaxIndex](int32 Idx)
+		{
+			return TTuple<int32, int32, int32>(FMath::Min(Triangles[Idx], MaxIndex),
+				FMath::Min(Triangles[Idx + 1], MaxIndex),
+				FMath::Min(Triangles[Idx + 2], MaxIndex));
+		};
+
+	const int32 NumTriIndices = (Triangles.Num() / 3) * 3; // Ensure number of triangle indices is multiple of three
+
+	// Detect degenerate triangles, i.e. non-unique vertex indices within the same triangle
+	int32 NumDegenerateTriangles = 0;
+	for (int32 IndexIdx = 0; IndexIdx < NumTriIndices; IndexIdx += 3)
+	{
+		int32 a, b, c;
+		Tie(a, b, c) = GetTriIndices(IndexIdx);
+		NumDegenerateTriangles += a == b || a == c || b == c; //-V614
+	}
+	if (NumDegenerateTriangles > 0)
+	{
+		//UE_LOG(LogProceduralComponent, Warning, TEXT("Detected %d degenerate triangle%s with non-unique vertex indices for created mesh section in '%s'; degenerate triangles will be dropped."),
+			//NumDegenerateTriangles, NumDegenerateTriangles > 1 ? TEXT("s") : TEXT(""), *GetFullName());
+	}
+
+	// Copy index buffer for non-degenerate triangles
+	NewSection.ProcIndexBuffer.Reset();
+	NewSection.ProcIndexBuffer.AddUninitialized(NumTriIndices - NumDegenerateTriangles * 3);
+	int32 CopyIndexIdx = 0;
+	for (int32 IndexIdx = 0; IndexIdx < NumTriIndices; IndexIdx += 3)
+	{
+		int32 a, b, c;
+		Tie(a, b, c) = GetTriIndices(IndexIdx);
+
+		if (a != b && a != c && b != c) //-V614
+		{
+			NewSection.ProcIndexBuffer[CopyIndexIdx++] = a;
+			NewSection.ProcIndexBuffer[CopyIndexIdx++] = b;
+			NewSection.ProcIndexBuffer[CopyIndexIdx++] = c;
+		}
+		else
+		{
+			--NumDegenerateTriangles;
+		}
+	}
+	check(NumDegenerateTriangles == 0);
+	check(CopyIndexIdx == NewSection.ProcIndexBuffer.Num());
+
+	NewSection.bEnableCollision = bCreateCollision;
+
+	AsyncTask(GamePriority, [this, ProcMesh, SectionIndex, NewSection]() {
+		ProcMesh->SetProcMeshSection(SectionIndex, NewSection);
+	});
+}
+
+void ATerrain::CreateMeshSection(UProceduralMeshComponent* ProcMesh, int32 SectionIndex, const TArray<FVector>& Vertices, const TArray<int32>& Triangles, const TArray<FVector>& Normals, const TArray<FVector2D>& UV0, const TArray<FColor>& VertexColors, const TArray<FProcMeshTangent>& Tangents, bool bCreateCollision)
+{
+	TArray<FVector2D> EmptyArray;
+	CreateMeshSection(ProcMesh, SectionIndex, Vertices, Triangles, Normals, UV0, EmptyArray, EmptyArray, EmptyArray, VertexColors, Tangents, bCreateCollision);
 }
 

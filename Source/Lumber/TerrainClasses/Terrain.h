@@ -19,7 +19,8 @@ UENUM()
 enum EChunkQuality {
 	Low,
 	Medium,
-	High
+	High,
+	Collision
 };
 
 USTRUCT()
@@ -96,9 +97,16 @@ public:
 
 	void GetChunkSizesFromQuality(EChunkQuality Quality, int* NewChunkSize, int* NewTileSize);
 
+	void CreateMeshSection(UProceduralMeshComponent* ProcMesh, int32 SectionIndex, const TArray<FVector>& Vertices, const TArray<int32>& Triangles, const TArray<FVector>& Normals, const TArray<FVector2D>& UV0, const TArray<FVector2D>& UV1, const TArray<FVector2D>& UV2, const TArray<FVector2D>& UV3, const TArray<FColor>& VertexColors, const TArray<FProcMeshTangent>& Tangents, bool bCreateCollision);
+
+	void CreateMeshSection(UProceduralMeshComponent* ProcMesh, int32 SectionIndex, const TArray<FVector>& Vertices, const TArray<int32>& Triangles, const TArray<FVector>& Normals, const TArray<FVector2D>& UV0, const TArray<FColor>& VertexColors, const TArray<FProcMeshTangent>& Tangents, bool bCreateCollision);
+
 public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	UProceduralMeshComponent* Mesh;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	UProceduralMeshComponent* CollisionMesh;
 
 public:
 	// Length and width of each chunk, must be odd and greater than 3
@@ -123,10 +131,10 @@ public:
 
 	// Which intervals should rendercheck be called? In seconds
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	int RenderCheckPeriod = 1;
+	float RenderCheckPeriod = 1.0f;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	bool bCreateCollision = false;
+	bool bMakeCollision = false;
 
 	// Distance at which point onwards the terrain is medium quality in chunks
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
