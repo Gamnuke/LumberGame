@@ -60,8 +60,21 @@ void ATerrain::Tick(float DeltaTime)
 		bCheckingRender = true;
 
 		FVector2D PointToRenderFrom = FVector2D(ActorToGenerateFrom->GetActorLocation().X, ActorToGenerateFrom->GetActorLocation().Y);
+		PointToRenderFrom -= FVector2D(totalChunkSize / 2, totalChunkSize / 2);
 		RenderChunks(PointToRenderFrom);
 	}
+
+	//for (int i = 0; i < Chunks.Num(); i++) {
+	//	if (!Chunks.IsValidIndex(i)) { continue; }
+	//	if (Chunks[i].RenderState == EChunkRenderState::Rendering) {
+	//		bool Rendering = (Chunks[i].RenderState == EChunkRenderState::Rendering);
+	//		//GEngine->AddOnScreenDebugMessage(999 - Chunks[i].ChunkIndex, DeltaTime * 2, Rendering ? FColor::Orange : FColor::Emerald, FString("Chunk ") + FString::FromInt(Chunks[i].ChunkIndex) + ": " + (Rendering ? "Rendering" : "Rendered"));
+	//	}
+
+	//	/*if (Chunks[i].ChunkIndex != i) {
+	//		GEngine->AddOnScreenDebugMessage(FMath::Rand(), 20, FColor::Red, FString("ERROR: Chunk data index and array indexes don't match"));
+	//	}*/
+	//}
 }
 
 /*
@@ -70,51 +83,49 @@ Algorithm renders chunks in a grid, not from the point of the player
 */
 void ATerrain::RenderChunks(FVector2D From) {
 	AsyncTask(BackgroundPriority, [this, From]() {
-		// logic for rendering and deleting far chunks goes here
+
+		// Stores array of render jobs that need to be run
+		TArray<TFunction<void()>> Jobs;
+
+		// Delete chunks that are outside render distance
+		for (int i = 0; i < Chunks.Num(); i++)
+		{
+			if (ChunkValid(i) && Chunks[i].RenderState == EChunkRenderState::Rendered && (From - Chunks[i].Coordinates).Length() > (ChunkRenderDistance + ChunkDeletionOffset) * totalChunkSize * sqrt(2)) {
+				DeleteChunkAtIndex(i);
+			}
+		}
 
 		// get array of chunk locations around player
 		TArray<FVector2D> NearestChunks;
 		GetNearestChunks(&NearestChunks);
-		TArray<TFunction<void()>> Jobs;
 
 		// Go through each chunk to check if it isnt already rendered, and render it, regardless of their LOD
 		for (FVector2D ChunkToCheck : NearestChunks) {
-
-			// Get LOD of what this chunk should be
-			EChunkQuality TargetLOD = EChunkQuality::High;
-
+			
 			// Get distance between chunk and observer
 			float ChunkDistance = (ChunkToCheck - From).Length();
 
-			if (ChunkDistance >= LowLODCutoffDist * totalChunkSize) {
-				TargetLOD = EChunkQuality::Low;
-			}
-			else if (ChunkDistance >= MediumLODCutoffDist * totalChunkSize) {
-				TargetLOD = EChunkQuality::Medium;
-
-			}
-			else if (ChunkDistance < MediumLODCutoffDist * totalChunkSize) {
-				TargetLOD = EChunkQuality::High;
-			}
-
+			// Get LOD of what this chunk should be
+			EChunkQuality TargetLOD = GetTargetLODFromDistance(ChunkDistance);
+			
 			// Check if chunk is found in memory, otherwise create new chunk data
-			FChunkRenderData* FoundChunk = FindOrCreateChunkData(ChunkToCheck, TargetLOD);
+			int FoundChunkIndex = FindOrCreateChunkData(ChunkToCheck, TargetLOD);
+			FChunkRenderData FoundChunk = Chunks[FoundChunkIndex];
 
 			// Only start to render if either:
 				// - The chunk is NOT rendered at all
 				// - OR the chunk is not the right quality AND NOT already rendering
-			if (FoundChunk->RenderState == EChunkRenderState::NotRendered || 
-				FoundChunk->ChunkQuality != TargetLOD && FoundChunk->RenderState != EChunkRenderState::Rendering
+			if (FoundChunk.RenderState == EChunkRenderState::NotRendered ||
+				(FoundChunk.ChunkQuality != TargetLOD && FoundChunk.RenderState != EChunkRenderState::Rendering)
 				) 
 			{
-				// If its a new chunk, designate an index for this chunk to let it render without being disturbed
-				FoundChunk->RenderState = EChunkRenderState::Rendering;
-				FoundChunk->ChunkQuality = TargetLOD;
-
-				FChunkRenderData ChunkCopy = *FoundChunk;
+				// We have a new chunk or a chunk that needs to be updated
+				FoundChunk.RenderState = EChunkRenderState::Rendering;
+				FoundChunk.ChunkQuality = TargetLOD;
+				Chunks[FoundChunkIndex] = FoundChunk;
 
 				// Add rendering of this chunk to the job batch
-				Jobs.Add([this, From, ChunkCopy, TargetLOD]() { RenderSingleChunk(ChunkCopy); });
+				Jobs.Add([this, FoundChunkIndex]() { RenderSingleChunk(FoundChunkIndex); });
 
 				// Run the batch job if there are more than 5 jobs
 				if (Jobs.Num() == JobsPerBatch) {
@@ -122,8 +133,6 @@ void ATerrain::RenderChunks(FVector2D From) {
 					Jobs.Empty();
 				}
 			}
-			
-			
 		}
 
 		// Run any remaining jobs
@@ -132,9 +141,30 @@ void ATerrain::RenderChunks(FVector2D From) {
 
 		// finally end algorithm
 		bCheckingRender = false;
-		});
+	});
 }
 
+/*
+Returns the LOD level from distance between player and the chunk
+*/
+EChunkQuality ATerrain::GetTargetLODFromDistance(float ChunkDistance) {
+	if (ChunkDistance >= LowLODCutoffDist * totalChunkSize) {
+		return EChunkQuality::Low;
+	}
+	else if (ChunkDistance >= MediumLODCutoffDist * totalChunkSize) {
+		return EChunkQuality::Medium;
+
+	}
+	else if (ChunkDistance < MediumLODCutoffDist * totalChunkSize) {
+		return EChunkQuality::High;
+	}
+
+	return EChunkQuality::High;
+}
+
+/*
+Runs an array of functions all on the same non-game thread
+*/
 void ATerrain::RunBatchJob(const TArray<TFunction<void()>> &Jobs) {
 	AsyncTask(BackgroundPriority, [this, Jobs]() {
 		for (const auto& Job : Jobs) {
@@ -143,18 +173,36 @@ void ATerrain::RunBatchJob(const TArray<TFunction<void()>> &Jobs) {
 	});
 }
 
+/*
+Deletes a chunk given its index
+Note: Turns out running async task on game thread doesn't immediately take effect. To solve this, we
+delete the ChunkData immediately from the array in the current thread, assuming its the main render thread
+*/
+void ATerrain::DeleteChunkAtIndex(int ChunkIndex) {
+	if (ChunkValid(ChunkIndex)) {
+		AsyncTask(GamePriority, [this, ChunkIndex]() {
+			Mesh->ClearMeshSection(ChunkIndex);
+			if (Chunks[ChunkIndex].ChunkQuality == EChunkQuality::High) {
+				CollisionMesh->ClearMeshSection(ChunkIndex);
+			}
+		});
 
-
+		Chunks[ChunkIndex].ChunkIndex = -1;
+	}
+}
 
 /*
 Renders a single chunk at a given location if not already rendered, otherwise re-renders it
 */
-void ATerrain::RenderSingleChunk(FChunkRenderData ChunkData) {
+void ATerrain::RenderSingleChunk(int ChunkDataIndex) {
+	/*if (ChunkData == nullptr) {
+		GEngine->AddOnScreenDebugMessage(FMath::Rand(), 20, FColor::Red, FString("ERROR: Chunk Index is invalid at RenderSingleChunk()"));
+		return;
+	}*/
 
 	// Extract variables from ChunkData for easy access
-	EChunkQuality ChunkTargetQuality = ChunkData.ChunkQuality;
-	int ChunkIndex = ChunkData.ChunkIndex;
-	FVector2D ChunkCoord = ChunkData.Coordinates;
+	EChunkQuality ChunkTargetQuality = Chunks[ChunkDataIndex].ChunkQuality;
+	FVector2D ChunkCoord = Chunks[ChunkDataIndex].Coordinates;
 
 	// Create mesh data and optional collision data
 	FMeshData NewMeshData;
@@ -164,18 +212,18 @@ void ATerrain::RenderSingleChunk(FChunkRenderData ChunkData) {
 		GetChunkRenderData(&NewMeshCollisionData, ChunkCoord, EChunkQuality::Collision);
 	}
 
-	GEngine->AddOnScreenDebugMessage(FMath::Rand(), RenderCheckPeriod * 2, FColor::MakeRandomColor(), FString("Creating/Updating Mesh at ") + ChunkCoord.ToString());
+	//GEngine->AddOnScreenDebugMessage(FMath::Rand(), RenderCheckPeriod * 2, FColor::MakeRandomColor(), FString("Creating/Updating Mesh at ") + ChunkCoord.ToString());
 
 	// Create mesh section for the mesh and collision mesh
-	CreateMeshSection(Mesh, ChunkIndex, NewMeshData.Vertices, NewMeshData.Triangles, NewMeshData.Normals, NewMeshData.UVs, NewMeshData.Colors, NewMeshData.Tangents, false);
+	CreateMeshSection(Mesh, ChunkDataIndex, NewMeshData.Vertices, NewMeshData.Triangles, NewMeshData.Normals, NewMeshData.UVs, NewMeshData.Colors, NewMeshData.Tangents, false);
 	if (ChunkTargetQuality == EChunkQuality::High) {
-		CreateMeshSection(CollisionMesh, ChunkIndex, NewMeshCollisionData.Vertices, NewMeshCollisionData.Triangles, NewMeshCollisionData.Normals, NewMeshCollisionData.UVs, NewMeshCollisionData.Colors, NewMeshCollisionData.Tangents, true);
+		CreateMeshSection(CollisionMesh, ChunkDataIndex, NewMeshCollisionData.Vertices, NewMeshCollisionData.Triangles, NewMeshCollisionData.Normals, NewMeshCollisionData.UVs, NewMeshCollisionData.Colors, NewMeshCollisionData.Tangents, true);
 	}
-
+	
 	// Set material on the game thread
-	AsyncTask(GamePriority, [this, ChunkIndex]() {
-		Chunks[ChunkIndex].RenderState = EChunkRenderState::Rendered;
-		Mesh->SetMaterial(ChunkIndex, TerrainMaterial);
+	AsyncTask(GamePriority, [this, ChunkDataIndex]() {
+		Mesh->SetMaterial(ChunkDataIndex, TerrainMaterial);
+		Chunks[ChunkDataIndex].RenderState = EChunkRenderState::Rendered;
 	});
 }
 
@@ -233,6 +281,8 @@ float ATerrain::GetTerrainPointData(FVector2D Point) {
 	// Mountain peaks
 	ResultZ += FMath::Abs(GetNoiseValueAtPoint(Point, 0.000004, &i_Seed)) * -60000;
 
+
+	ResultZ += GetNoiseValueAtPoint(Point, 0.0000005, &i_Seed) * 1000000;
 	//ResetLookupTable();
 	return ResultZ;
 }
@@ -278,33 +328,33 @@ FVector2D ATerrain::GetClosestChunkToPoint(FVector2D Point) {
 Recursively renders adjacent chunks
 */
 void ATerrain::RecursiveRender(FVector2D ChunkCoord, int Iteration) {
-	if (ChunkCoord.Length() >= totalChunkSize * 2) { return; }
+	//if (ChunkCoord.Length() >= totalChunkSize * 2) { return; }
 
-	// Check if this chunk is already rendered
-	for (int k = 0; k < Chunks.Num(); k++)
-	{
-		// Check if we found this chunk in the chunk array
-		if (Chunks.IsValidIndex(k) && ChunkCoord == Chunks[k].Coordinates)
-		{
-			// We found chunk in array, its either rendering or rendered, so move on
-			return;
-		}
-	}
+	//// Check if this chunk is already rendered
+	//for (int k = 0; k < Chunks.Num(); k++)
+	//{
+	//	// Check if we found this chunk in the chunk array
+	//	if (Chunks.IsValidIndex(k) && ChunkCoord == Chunks[k].Coordinates)
+	//	{
+	//		// We found chunk in array, its either rendering or rendered, so move on
+	//		return;
+	//	}
+	//}
 
-	//RenderSingleChunk(ChunkCoord);
+	////RenderSingleChunk(ChunkCoord);
 
-	TArray<FVector2D> AdjacentChunks;
+	//TArray<FVector2D> AdjacentChunks;
 
-	for (int i = -1; i <= 1; i++)
-	{
-		for (int j = -1; j <= 1; j++)
-		{
-			FVector2D AdjacentChunk = GetClosestChunkToPoint(ChunkCoord + FVector2D(i * totalChunkSize, j * totalChunkSize));
-			// Check if this chunk is already rendered
+	//for (int i = -1; i <= 1; i++)
+	//{
+	//	for (int j = -1; j <= 1; j++)
+	//	{
+	//		FVector2D AdjacentChunk = GetClosestChunkToPoint(ChunkCoord + FVector2D(i * totalChunkSize, j * totalChunkSize));
+	//		// Check if this chunk is already rendered
 
-			RecursiveRender(AdjacentChunk, Iteration + 1);
-		}
-	}
+	//		RecursiveRender(AdjacentChunk, Iteration + 1);
+	//	}
+	//}
 }
 
 
@@ -361,50 +411,79 @@ void ATerrain::GetChunkRenderData(FMeshData *MeshData, FVector2D ChunkCoord, ECh
 }
 
 /*
-Returns the index of found chunk and sets struct pointer to that
+Given a chunk location, create and return a new chunk data or return the existing data
 */
-FChunkRenderData* ATerrain::GetChunk(FVector2D ChunkLocation) {
+int ATerrain::FindOrCreateChunkData(FVector2D ChunkLocation, EChunkQuality ChunkQuality) {
+
+	// check if chunk data exists
+	int FoundChunkIndex = GetChunk(ChunkLocation);
+
+	if (FoundChunkIndex == -1) {
+		FoundChunkIndex = DesignateChunkIndex(ChunkLocation, ChunkQuality);
+	}
+
+	return FoundChunkIndex;
+}
+
+int ATerrain::AddNewChunkData(FChunkRenderData NewData) {
+
+	// Go through array and replace the first chunk data with an index of -1, with the new data
 	for (int i = 0; i < Chunks.Num(); i++)
 	{
-		if (Chunks.IsValidIndex(i) && Chunks[i].Coordinates == ChunkLocation) {
-			return &Chunks[i];
+		if (Chunks.IsValidIndex(i) && Chunks[i].ChunkIndex == -1) {
+			Chunks[i] = NewData;
+			return i;
 		}
 	}
 
-	return nullptr;
+	// Otherwise we simply add to end of array
+	return Chunks.Add(NewData);
+}
+
+/*
+Checks if there is a valid chunk stored in the chunks array at given index
+*/
+bool ATerrain::ChunkValid(int ChunkIndex) {
+	// Chunk index is out of bounds, so chunk is invalid
+	if (!Chunks.IsValidIndex(ChunkIndex)) { return false; }
+
+	// Chunk index is valid, but set 
+	if (Chunks[ChunkIndex].ChunkIndex == -1) { return false; }
+	return true;
+}
+
+/*
+Returns the index of a chunk, given its location and sets struct pointer to that, returns -1 if its not found
+*/
+int ATerrain::GetChunk(FVector2D ChunkLocation) {
+	for (int i = 0; i < Chunks.Num(); i++)
+	{
+		if (ChunkValid(i) && Chunks[i].Coordinates == ChunkLocation) {
+			return i;
+		}
+	}
+
+	return -1;
 }
 
 
 /*
-Creates new chunk data at given location and LOD, and designates an index in the chunk array for this new chunk, and returns the newly created chunk data
+Creates new chunk data at given location and LOD, and designates an index in the chunk array for this new chunk, and returns the index of the newly created chunk data
 */
-FChunkRenderData* ATerrain::DesignateChunkIndex(FVector2D ChunkLocation, EChunkQuality ChunkQuality) {
+int ATerrain::DesignateChunkIndex(FVector2D ChunkLocation, EChunkQuality ChunkQuality) {
 	FChunkRenderData NewChunkData;
 
 	// Add chunk data to array
 	NewChunkData.Coordinates = ChunkLocation;
 	NewChunkData.RenderState = EChunkRenderState::NotRendered;
 	NewChunkData.ChunkQuality = ChunkQuality;
-	int DesignatedIndex = Chunks.Add(NewChunkData);
+	int DesignatedIndex = AddNewChunkData(NewChunkData);
 	Chunks[DesignatedIndex].ChunkIndex = DesignatedIndex;
+	GEngine->AddOnScreenDebugMessage(FMath::Rand(), RenderCheckPeriod * 2, FColor::MakeRandomColor(), FString("Designated ") + ChunkLocation.ToString() + FString(" at ") + FString::FromInt(DesignatedIndex));
 
-	return &Chunks[DesignatedIndex];
+	return DesignatedIndex;
 }
 
-/*
-Given a chunk location, create and return a new chunk data or return the existing data
-*/
-FChunkRenderData* ATerrain::FindOrCreateChunkData(FVector2D ChunkLocation, EChunkQuality ChunkQuality) {
-
-	// check if chunk data exists
-	FChunkRenderData* FoundChunk = GetChunk(ChunkLocation);
-
-	if(FoundChunk == nullptr) {
-		FoundChunk = DesignateChunkIndex(ChunkLocation, ChunkQuality);
-	}
-
-	return FoundChunk;
-}
 
 /*
 Returns scaled chunk sizes and tile sizes with the LOD, should always try and equal to the initial totalChunkSize

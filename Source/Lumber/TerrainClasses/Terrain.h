@@ -7,6 +7,8 @@
 #include "ProceduralMeshComponent.h"
 #include "Terrain.generated.h"
 
+#define MAX_CHUNKS 5000
+
 class UProceduralMeshComponent;
 
 UENUM()
@@ -27,11 +29,15 @@ enum EChunkQuality {
 USTRUCT()
 struct FChunkRenderData {
 	GENERATED_BODY()
-	EChunkRenderState RenderState;
+	
+	EChunkRenderState RenderState = EChunkRenderState::NotRendered;
+	
 	FVector2D Coordinates;
 
 	EChunkQuality ChunkQuality;
-	int ChunkIndex;
+	
+	int ChunkIndex = -1;
+
 };
 
 USTRUCT()
@@ -74,13 +80,13 @@ public:
 
 	void RenderChunks(FVector2D From);
 
+	EChunkQuality GetTargetLODFromDistance(float ChunkDistance);
+
 	void RunBatchJob(const TArray<TFunction<void()>>& Jobs);
 
-	void RenderSingleChunk(FChunkRenderData ChunkData);
+	void DeleteChunkAtIndex(int ChunkIndex);
 
-	void RemoveChunk(FVector2D ChunkLocationToRemove);
-
-	void RemoveChunk(FChunkRenderData* ChunkToRemove);
+	void RenderSingleChunk(int ChunkDataIndex);
 
 	void GetNearestChunks(TArray<FVector2D>* NearestChunks);
 
@@ -88,23 +94,23 @@ public:
 
 	void RecursiveRender(FVector2D ChunkCoord, int Iteration);
 
-	void UpdateChunk(FVector2D ChunkCoord, EChunkQuality Quality);
+	int DesignateChunkIndex(FVector2D ChunkLocation, EChunkQuality ChunkQuality);
 
-	FChunkRenderData* DesignateChunkIndex(FVector2D ChunkLocation, EChunkQuality ChunkQuality);
-
-	FChunkRenderData* FindOrCreateChunkData(FVector2D ChunkLocation, EChunkQuality ChunkQuality);
+	int FindOrCreateChunkData(FVector2D ChunkLocation, EChunkQuality ChunkQuality);
 
 	void GetChunkRenderData(FMeshData* MeshData, FVector2D ChunkCoord, EChunkQuality Quality);
 
-	FChunkRenderData* GetChunk(FVector2D ChunkLocation);
-
-	int CheckChunk(FVector2D ChunkLocation, FChunkRenderData** FoundRenderData);
+	int GetChunk(FVector2D ChunkLocation);
 
 	void GetChunkSizesFromQuality(EChunkQuality Quality, int* NewChunkSize, int* NewTileSize);
 
 	void CreateMeshSection(UProceduralMeshComponent* ProcMesh, int32 SectionIndex, const TArray<FVector>& Vertices, const TArray<int32>& Triangles, const TArray<FVector>& Normals, const TArray<FVector2D>& UV0, const TArray<FVector2D>& UV1, const TArray<FVector2D>& UV2, const TArray<FVector2D>& UV3, const TArray<FColor>& VertexColors, const TArray<FProcMeshTangent>& Tangents, bool bCreateCollision);
 
 	void CreateMeshSection(UProceduralMeshComponent* ProcMesh, int32 SectionIndex, const TArray<FVector>& Vertices, const TArray<int32>& Triangles, const TArray<FVector>& Normals, const TArray<FVector2D>& UV0, const TArray<FColor>& VertexColors, const TArray<FProcMeshTangent>& Tangents, bool bCreateCollision);
+
+	int AddNewChunkData(FChunkRenderData NewData);
+
+	bool ChunkValid(int ChunkIndex);
 
 public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
@@ -133,6 +139,10 @@ public:
 	// Chunk render distance, eg Distance=3 means 3 chunks from observer will be rendered
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	int ChunkRenderDistance = 5;
+
+	// Distance from render distance in chunks at which chunks will start to be unloaded, must be higher than chunk render distance
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	int ChunkDeletionOffset = 5;
 
 	// Which intervals should rendercheck be called? In seconds
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
@@ -167,7 +177,11 @@ public:
 	// Stores chunks as pairs of their location (for unrendering) and their index, which correspond to the ProceduralMeshComponent's Mesh Section Index
 	TArray<FChunkRenderData> Chunks;
 
+
 public:
 	float NextChunkRenderCheck = 2;
 	bool bCheckingRender = false;
+
+	float NextChunkDeletionCheck = 2;
+
 };
