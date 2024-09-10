@@ -20,8 +20,8 @@
 #include "LumberGameMode.h"
 #include "TreeClasses/TreeRoot.h"
 
-#define Thread0 ENamedThreads::GameThread
-#define Thread1 ENamedThreads::AnyBackgroundHiPriTask
+#define GamePriority ENamedThreads::GameThread
+#define BackgroundPriority ENamedThreads::AnyBackgroundHiPriTask
 
 // Sets default values
 ATree::ATree()
@@ -71,10 +71,10 @@ void ATree::StartGeneration() {
 	BuildTreeMeshRecursive(4, 0, this, true);
 
 	// Once all branches are spawned, recursively generate the meshes on all branches on a seperate thread
-	AsyncTask(Thread1, [this]() {
+	//AsyncTask(BackgroundPriority, [this]() {
 		GenerateMeshRecursive(this);
 		TreeRoot->OnFinishGeneration();
-	});
+	//});
 
 	SetupTree(this, BranchHeight, WIDTH);
 }
@@ -169,7 +169,7 @@ void ATree::BuildTreeMesh(bool bBuildLeaves) {
 
 	if (bBuildLeaves == false) {
 		// make empty mesh section as placeholder for leaves
-		AsyncTask(Thread0, [this]() {
+		AsyncTask(GamePriority, [this]() {
 			Mesh->CreateMeshSection(0, TArray<FVector>(), TArray<int32>(), TArray<FVector>(), TArray<FVector2D>(), TArray<FColor>(), TArray<FProcMeshTangent>(), false);
 		});
 	}
@@ -278,7 +278,7 @@ void ATree::BuildTreeMesh(bool bBuildLeaves) {
 	NewMeshInfo.MeshTangents = Tangents;
 	BranchMeshInfo = NewMeshInfo;
 
-	AsyncTask(Thread0, [this]() {
+	AsyncTask(GamePriority, [this]() {
 		Mesh->CreateMeshSection(
 			BranchMeshInfo.Index,
 			BranchMeshInfo.Vertices,
@@ -391,7 +391,7 @@ void ATree::MakeLeaves()
 	NewMeshInfo.MeshTangents = LeafTangents;
 	LeafMeshInfo = NewMeshInfo;
 
-	AsyncTask(Thread0, [this]() {
+	AsyncTask(GamePriority, [this]() {
 		Mesh->CreateMeshSection(
 			LeafMeshInfo.Index,
 			LeafMeshInfo.Vertices,

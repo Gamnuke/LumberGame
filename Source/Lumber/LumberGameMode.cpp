@@ -26,13 +26,15 @@ void ALumberGameMode::BeginPlay() {
 	iPoint = 0;
 
 	nextSpawnTime = 10;
-
-	
 }
 
 void ALumberGameMode::Tick(float DeltaSeconds) {
 	Super::Tick(DeltaSeconds);
 	CurrentTime += DeltaSeconds;
+	if (CurrentTime > nextSpawnTime && nextSpawnTime != -1) {
+		nextSpawnTime = -1;
+		//StartPlanting();
+	}
 
 	/*if (CurrentTime >= nextSpawnTime && nextSpawnTime != -1)
 	{
@@ -54,20 +56,35 @@ void ALumberGameMode::Tick(float DeltaSeconds) {
 	//Cast<ATree::BuildTreeMeshRecursive()>TaskQueue.Pop()();
 }
 
-void ALumberGameMode::PlantTree(FVector LocationToPlant) {
+void ALumberGameMode::StartPlanting() {
 	// return if there are no trees to spawn
+	GEngine->AddOnScreenDebugMessage(FMath::Rand(), 5, FColor::Orange, FString("Planting trees"));
+
 	if (TreeClasses.Num() == 0) { return; }
+	TArray<ATreeRoot*> NewTrees;
 
-	FHitResult Hit;
-	GetWorld()->LineTraceSingleByChannel(Hit, LocationToPlant + FVector(0, 0, 1000000), LocationToPlant - FVector(0, 0, 1000000), ECollisionChannel::ECC_WorldStatic);
+	for (int i = 0; i < Points.Num(); i++)
+	{
+		FHitResult Hit;
+		GetWorld()->LineTraceSingleByChannel(Hit, Points[i] + FVector(0, 0, 1000000), Points[i] - FVector(0, 0, 1000000), ECollisionChannel::ECC_WorldStatic);
 
-	if (Hit.bBlockingHit) {
-		//GEngine->AddOnScreenDebugMessage(FMath::Rand(), 5, FColor::Cyan, FString("Spawned Tree"));
-		ATreeRoot *NewTreeRoot = GetWorld()->SpawnActor<ATreeRoot>(TreeRootBlueprintClass, Hit.ImpactPoint, FRotator());
-		NewTreeRoot->TreeSeed = FMath::Rand();
-		NewTreeRoot->TreeClass = TreeClasses[0];
-		NewTreeRoot->GenerateTree();
+		if (Hit.bBlockingHit) {
+			ATreeRoot *NewTree = GetWorld()->SpawnActor<ATreeRoot>(TreeRootBlueprintClass, Hit.ImpactPoint, FRotator());
+			NewTree->TreeClass = TreeClasses[0];
+			NewTrees.Add(NewTree);
+		}
 	}
+
+	AsyncTask(ENamedThreads::AnyBackgroundHiPriTask, [this, NewTrees]() {
+		for (ATreeRoot* NewTree : NewTrees) {
+			NewTree->GenerateTree();
+		}
+	});
+}
+
+
+void ALumberGameMode::PlantTree(FVector LocationToPlant) {
+	
 
 }
 

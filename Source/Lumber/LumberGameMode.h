@@ -19,6 +19,8 @@ public:
 	virtual void BeginPlay();
 	virtual void Tick(float DeltaSeconds) override;
 
+	void StartPlanting();
+
 	//TQueue<void> TaskQueue;
 
 	bool Started = false;

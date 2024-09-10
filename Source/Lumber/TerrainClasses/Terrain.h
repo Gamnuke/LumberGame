@@ -26,13 +26,14 @@ enum EChunkQuality {
 	Collision
 };
 
+
 USTRUCT()
 struct FChunkRenderData {
 	GENERATED_BODY()
 	
 	EChunkRenderState RenderState = EChunkRenderState::NotRendered;
 	
-	FVector2D Coordinates;
+	FVector2D ChunkLocation;
 
 	EChunkQuality ChunkQuality;
 	
@@ -49,6 +50,20 @@ struct FMeshData {
 	TArray<FVector2D> UVs;
 	TArray<FProcMeshTangent> Tangents;
 	TArray<FColor> Colors;
+};
+
+UENUM()
+enum EJobStatus {
+	NotRunning,
+	Running,
+	Completed
+};
+
+USTRUCT()
+struct FJobBatch {
+	GENERATED_BODY()
+	TArray<TFunction<void()>> Jobs;
+	EJobStatus JobStatus = EJobStatus::NotRunning;
 };
 
 UCLASS()
@@ -80,13 +95,31 @@ public:
 
 	void RenderChunks(FVector2D From);
 
-	EChunkQuality GetTargetLODFromDistance(float ChunkDistance);
+	void LoadChunk(FVector2D ChunkLocation);
+
+	void ReloadChunk(FVector2D ChunkLocation);
+
+	void ReloadChunk(int ChunkIndex);
+
+	bool CheckChunkForReloading(FVector2D ChunkLocation);
+
+	bool CheckChunkForReloading(int ChunkIndex);
+
+	EChunkQuality GetTargetLODForChunk(FVector2D ChunkLocation);
+
+	void AddJobs(const TArray<TFunction<void()>>& Jobs);
+
+	void AddJob(TFunction<void()> Job);
+
+	void RunJobs();
+
+	void RunJob(TFunction<void()> Job);
 
 	void RunBatchJob(const TArray<TFunction<void()>>& Jobs);
 
 	void DeleteChunkAtIndex(int ChunkIndex);
 
-	void RenderSingleChunk(int ChunkDataIndex);
+	void RenderChunkTerrain(int ChunkDataIndex);
 
 	void GetNearestChunks(TArray<FVector2D>* NearestChunks);
 
@@ -168,6 +201,9 @@ public:
 	// Generates chunks from this point
 	AActor *ActorToGenerateFrom;
 
+	// Generates chunks from this point
+	FVector2D ObserverLocation;
+
 	// Stream for psudorandom numbers
 	FRandomStream Stream;
 
@@ -177,6 +213,8 @@ public:
 	// Stores chunks as pairs of their location (for unrendering) and their index, which correspond to the ProceduralMeshComponent's Mesh Section Index
 	TArray<FChunkRenderData> Chunks;
 
+	// Stores arrays of array of jobs, which gets processed every tick
+	TArray<FJobBatch> JobBatches;
 
 public:
 	float NextChunkRenderCheck = 2;
