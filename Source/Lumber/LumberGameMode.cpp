@@ -25,7 +25,7 @@ void ALumberGameMode::BeginPlay() {
 	Points = MakeCircleGrid(5, 2000);
 	iPoint = 0;
 
-	nextSpawnTime = 10;
+	nextSpawnTime = 5;
 }
 
 void ALumberGameMode::Tick(float DeltaSeconds) {
@@ -33,7 +33,7 @@ void ALumberGameMode::Tick(float DeltaSeconds) {
 	CurrentTime += DeltaSeconds;
 	if (CurrentTime > nextSpawnTime && nextSpawnTime != -1) {
 		nextSpawnTime = -1;
-		//StartPlanting();
+		StartPlanting();
 	}
 
 	/*if (CurrentTime >= nextSpawnTime && nextSpawnTime != -1)
@@ -70,12 +70,13 @@ void ALumberGameMode::StartPlanting() {
 
 		if (Hit.bBlockingHit) {
 			ATreeRoot *NewTree = GetWorld()->SpawnActor<ATreeRoot>(TreeRootBlueprintClass, Hit.ImpactPoint, FRotator());
+			NewTree->TreeSeed = FMath::Rand();
 			NewTree->TreeClass = TreeClasses[0];
 			NewTrees.Add(NewTree);
 		}
 	}
 
-	AsyncTask(ENamedThreads::AnyBackgroundHiPriTask, [this, NewTrees]() {
+	AsyncTask(ENamedThreads::GameThread, [this, NewTrees]() {
 		for (ATreeRoot* NewTree : NewTrees) {
 			NewTree->GenerateTree();
 		}
