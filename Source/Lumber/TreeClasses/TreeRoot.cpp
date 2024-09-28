@@ -24,7 +24,7 @@ void ATreeRoot::GenerateTree() {
 	// Sets up stream with given seed
 	NumberStream = FRandomStream(TreeSeed);
 	
-	// Create first tree to start recursively generating
+	// Create first branch to start recursively generating
 	ATree* NewTree = GetWorld()->SpawnActor<ATree>(TreeClass, GetActorLocation(), FRotator());
 	if (NewTree != nullptr) {
 		StartGenerationTime = FPlatformTime::Seconds();
@@ -33,7 +33,6 @@ void ATreeRoot::GenerateTree() {
 		NewTree->FirstTree = true;
 		NewTree->StartGeneration();
 	}
-
 }
 
 /*

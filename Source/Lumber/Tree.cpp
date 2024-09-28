@@ -60,6 +60,7 @@ Called on the first branch
 */
 void ATree::StartGeneration() {
 
+	// Setup variables for this branch
 	BoxCollision->SetSimulatePhysics(false);
 	ROWS *= TrunkHeightMultiplier;
 	BranchHeight = (ROWS - 1) * SECTION_HEIGHT;
@@ -71,10 +72,10 @@ void ATree::StartGeneration() {
 	BuildTreeMeshRecursive(4, 0, this, true);
 
 	// Once all branches are spawned, recursively generate the meshes on all branches on a seperate thread
-	//AsyncTask(BackgroundPriority, [this]() {
-		GenerateMeshRecursive(this);
+	AsyncTask(BackgroundPriority, [this]() {
+		//GenerateMeshRecursive(this);
 		TreeRoot->OnFinishGeneration();
-	//});
+	});
 
 	SetupTree(this, BranchHeight, WIDTH);
 }

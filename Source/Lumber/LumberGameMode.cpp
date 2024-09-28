@@ -22,7 +22,7 @@ ALumberGameMode::ALumberGameMode()
 
 void ALumberGameMode::BeginPlay() {
 	Super::BeginPlay();
-	Points = MakeCircleGrid(5, 2000);
+	Points = MakeCircleGrid(20, 2000);
 	iPoint = 0;
 
 	nextSpawnTime = 5;
