@@ -4,13 +4,14 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "../Serialization/SerializableObject.h"
 #include "TreeRoot.generated.h"
 
 class ATree;
 struct FRandomStream;
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
-class LUMBER_API ATreeRoot : public AActor
+class LUMBER_API ATreeRoot : public AActor, public ISerializableObject
 {
 	GENERATED_BODY()
 
@@ -27,6 +28,7 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
+
 	void GenerateTree();
 
 public:	
@@ -39,4 +41,8 @@ public:
 	FRandomStream NumberStream;
 
 	double StartGenerationTime;
+
+public:
+	FJsonObject SerializeObject() override;
+	void DeserializeAndLoadObject(FJsonObject ObjectData) override;
 };

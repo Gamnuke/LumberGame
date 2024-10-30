@@ -73,7 +73,7 @@ void ATree::StartGeneration() {
 
 	// Once all branches are spawned, recursively generate the meshes on all branches on a seperate thread
 	AsyncTask(BackgroundPriority, [this]() {
-		//GenerateMeshRecursive(this);
+		GenerateMeshRecursive(this);
 		TreeRoot->OnFinishGeneration();
 	});
 

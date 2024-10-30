@@ -6,6 +6,7 @@
 #include "UObject/ConstructorHelpers.h"
 #include "Tree.h"
 #include "TreeClasses/TreeRoot.h"
+#include "ChunkHandler/ChunkLoader.h"
 
 ALumberGameMode::ALumberGameMode()
 	: Super()
@@ -21,6 +22,7 @@ ALumberGameMode::ALumberGameMode()
 }
 
 void ALumberGameMode::BeginPlay() {
+	ChunkLoader::CreateNewWorld("Epic world");
 	Super::BeginPlay();
 	Points = MakeCircleGrid(20, 2000);
 	iPoint = 0;

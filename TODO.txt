@@ -3,6 +3,9 @@ make bark different texture at bases
 
 make trees async generated
 
+- save/load from file
+	- when loading from save file, check which chunks are in the save file and load that chunk with all its data, otherwise generate new chunk data
+
 Ideas:
 certain trees grow at night - more reason to go at night
 diminishing returns on types of wood - others increase in value over time till collected - eg contract system/pinboard outside

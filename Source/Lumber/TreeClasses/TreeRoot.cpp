@@ -51,3 +51,12 @@ void ATreeRoot::Tick(float DeltaTime)
 
 }
 
+FJsonObject ATreeRoot::SerializeObject()
+{
+	return FJsonObject();
+}
+
+void ATreeRoot::DeserializeAndLoadObject(FJsonObject ObjectData)
+{
+}
+
