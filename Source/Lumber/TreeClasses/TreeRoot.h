@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "../Serialization/SerializableObject.h"
+#include "LogData.h"
 #include "TreeRoot.generated.h"
 
 class ATree;
@@ -45,4 +46,6 @@ public:
 public:
 	FJsonObject SerializeObject() override;
 	void DeserializeAndLoadObject(FJsonObject ObjectData) override;
+
+	TArray<LogData> LogData
 };

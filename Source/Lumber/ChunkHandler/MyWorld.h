@@ -20,6 +20,6 @@ public:
 
 	FMyWorldSettings WorldData;
 
-	FJsonObject SerializeObject() override;
-	void DeserializeAndLoadObject(FJsonObject ObjectData) override;
+	FJsonObject SerializeObject();
+	void DeserializeAndLoadObject(FJsonObject ObjectData);
 };

@@ -10,3 +10,19 @@ Ideas:
 certain trees grow at night - more reason to go at night
 diminishing returns on types of wood - others increase in value over time till collected - eg contract system/pinboard outside
 trees drop acorns
+
+Notes:
+Right now, we have the TreeRoot initiating a generation sequence for the tree. It spawns one log, and calls a function on that log to recursively generate
+the rest of the logs.
+
+What causes lag:
+Initial generation of the tree; possibly the recursive spawning of a new log or the fact that everything has a box collision could be the cause.
+FPS Lag is caused by the meshes- Turning off mesh generation while keeping collisions caused no long term lag.
+This opts for a modular solution to generation, to be able to control LOD levels
+
+Its tested that mesh generation doesn't cause lag, instead its either the act of spawning each log or the engine needing to initialize the box collision component of the tree.
+The advantage of this is there is no outer "parent" for the whole tree, the parent for all trees is the first log.
+Problem with this is its hard to modularise the generation process, eg if we want meshes to generate separate to the collision and vertices calculations its hard to,
+since everything is dependent on the last step.
+
+We are going to move to a different generation method, where we first generate the data in the TreeRoot actor, then from there it will generate the rest of the logs using that data
