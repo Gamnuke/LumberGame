@@ -24,19 +24,18 @@ ALumberGameMode::ALumberGameMode()
 void ALumberGameMode::BeginPlay() {
 	ChunkLoader::CreateNewWorld("Epic world");
 	Super::BeginPlay();
-	Points = MakeCircleGrid(20, 2000);
+	Points = MakeCircleGrid(5, 2000);
 	iPoint = 0;
-
 	nextSpawnTime = 5;
 }
 
 void ALumberGameMode::Tick(float DeltaSeconds) {
 	Super::Tick(DeltaSeconds);
 	CurrentTime += DeltaSeconds;
-	/*if (CurrentTime > nextSpawnTime && nextSpawnTime != -1) {
+	if (CurrentTime > nextSpawnTime && nextSpawnTime != -1) {
 		nextSpawnTime = -1;
 		StartPlanting();
-	}*/
+	}
 
 	/*if (CurrentTime >= nextSpawnTime && nextSpawnTime != -1)
 	{
@@ -46,14 +45,14 @@ void ALumberGameMode::Tick(float DeltaSeconds) {
 			PlantTree(Point);
 		}
 	}*/
-	if (CurrentTime >= nextSpawnTime && iPoint < Points.Num()) {
+	/*if (CurrentTime >= nextSpawnTime && iPoint < Points.Num()) {
 		Started = true;
 
 		PlantTree(Points[iPoint]);
 
 		nextSpawnTime = CurrentTime;
 		iPoint++;
-	}
+	}*/
 
 	//Cast<ATree::BuildTreeMeshRecursive()>TaskQueue.Pop()();
 }

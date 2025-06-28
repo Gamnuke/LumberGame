@@ -3,6 +3,7 @@
 
 #include "LogData.h"
 
-LogData::LogData()
+ULogData::ULogData()
 {
+
 }

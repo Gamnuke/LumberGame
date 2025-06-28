@@ -6,6 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "Containers/Queue.h"
 #include "ProceduralMeshComponent.h"
+#include "TreeClasses/LogData.h"
 #include "Tree.generated.h"
 
 class UNiagaraComponent;
@@ -36,6 +37,7 @@ struct FProcMeshInfo {
 	GENERATED_BODY()
 
 	int Index;
+
 	TArray<FVector> Vertices;
 	TArray<int> Triangles;
 	TArray<FVector> Normals;
@@ -59,89 +61,17 @@ protected:
 
 	FVector TraceMesh(FVector Start, FVector End, UProceduralMeshComponent* ProcMesh);
 
-	void SetupTree(ATree* Tree, int NewBranchHeight, int NewBranchWidth);
 public:	
 	// Tree settings
-
-	// How many rows of vertices for each branch
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	int ROWS = 10;
-
-	// Thickness of the branch
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	int WIDTH = 100;
-
-	// Gap between each row of vertices
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	int SECTION_HEIGHT = 50;
-
-	// Angle between each vertex in one row (must be divisible into 360)
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	int INCREMENT = 45;
-
-	// Randomness of the vertices' location
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	int R = 10;
-
-	// Minimum length of a cut branch that allows the branch to be cut
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	float MINCUTLENGTH = 25;
-
-	// Size of the leaf
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	float LeafSize = 150;
-
-	// How spread out the leaves are
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	float RandLeafThreshold = 0.6;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Chance)
-	int SideStemChance = 50;
-
-	// Min chance for new branches
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	int BranchNumMin = 1;
-
-	// Max chance for new branches
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	int BranchNumMax = 5;
-
-	// chance for branch to extend instead of creating new branches as percentage
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category=Chance)
-	int ExtendChance = 1;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	int NumLeaves = 50;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	int Seed;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	bool bHasLeaves = false;
-
-	// allows the trunk of the tree to be changed, 1 = same size as branches
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	float TrunkHeightMultiplier = 1.5;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	UNiagaraComponent* ParticleSystem;
 
-	// How straight upwards the tree will be (lower values means straighter tree)
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	float StraightAmount = 0.5;
+	static const int LeafMeshIndex = 0;
+	static const int LogMeshIndex = 1;
+	static const int RingMeshIndex = 2;
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	UMaterialInterface* LogMaterial;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	UMaterialInterface* LeafMaterial;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	UMaterialInterface* CrossSectionMaterial;
-
-	int LeafMeshIndex = 0;
-	int LogMeshIndex = 1;
-	int RingMeshIndex = 2;
+	FData ThisLogData;
 
 	// Asyncing tasks make trees unique regardless of seed because it accesses a random value at different times
 	// therefore skewing actual random variables.
@@ -149,7 +79,8 @@ public:
 
 public:
 	// Functions
- 
+	void SetupTree(ATree* Tree, int NewBranchHeight, int NewBranchWidth);
+
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
@@ -160,14 +91,10 @@ public:
 
 	void RemoveLeavesRecursive(ATree* Root, ATree* NextTree);
 
+	static FProcMeshInfo CreateMeshData(bool bBuildLeaves, FData NewLogData, FRandomStream NumberStream, FVector LocalOrigin, FVector UpVector);
+
 	void BuildTreeMesh(bool bBuildLeaves);
 	void MakeLeaves();
-	void BuildTreeMeshRecursive(int MaxDepth, int CurrentDepth, ATree* Parent, bool Extension);
-
-	int RandRange(int Min, int Max, FRandomStream& Stream);
-	float FRandRange(float Min, float Max, FRandomStream& Stream);
-	
-	void StartGeneration();
 public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 		UProceduralMeshComponent* Mesh;
