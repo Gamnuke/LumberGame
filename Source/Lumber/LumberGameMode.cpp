@@ -24,9 +24,9 @@ ALumberGameMode::ALumberGameMode()
 void ALumberGameMode::BeginPlay() {
 	ChunkLoader::CreateNewWorld("Epic world");
 	Super::BeginPlay();
-	Points = MakeCircleGrid(5, 2000);
+	Points = MakeCircleGrid(25, 2000);
 	iPoint = 0;
-	nextSpawnTime = 5;
+	nextSpawnTime = 8;
 }
 
 void ALumberGameMode::Tick(float DeltaSeconds) {
@@ -79,7 +79,7 @@ void ALumberGameMode::StartPlanting() {
 
 	AsyncTask(ENamedThreads::GameThread, [this, NewTrees]() {
 		for (ATreeRoot* NewTree : NewTrees) {
-			NewTree->GenerateTree();
+			NewTree->GenerateTree(EChunkQuality::Low);
 		}
 	});
 }
@@ -93,7 +93,7 @@ void ALumberGameMode::PlantTree(FVector LocationToPlant) {
 		ATreeRoot* NewTree = GetWorld()->SpawnActor<ATreeRoot>(TreeRootBlueprintClass, Hit.ImpactPoint, FRotator());
 		NewTree->TreeSeed = FMath::Rand();
 		NewTree->TreeClass = TreeClasses[0];
-		NewTree->GenerateTree();
+		NewTree->GenerateTree(EChunkQuality::Low);
 	}
 }
 

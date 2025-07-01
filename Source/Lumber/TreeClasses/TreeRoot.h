@@ -7,13 +7,19 @@
 #include "../Serialization/SerializableObject.h"
 #include "LogData.h"
 #include "ProceduralMeshComponent.h"
+#include "../Tree.h"
+#include "../TerrainClasses/Terrain.h"
 #include "TreeRoot.generated.h"
 
 class ATree;
 class LogData;
 class UProceduralMeshComponent;
 struct FRandomStream;
+struct FProcMeshInfo;
 
+/*
+	Class that is meant to be a container for logs, also acts as a one-point to enable LOD and to make rendering more efficient
+*/
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class LUMBER_API ATreeRoot : public AActor, public ISerializableObject
 {
@@ -23,25 +29,61 @@ protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
 
-public:	
-	// Sets default values for this component's properties
-	ATreeRoot();
-
-	void OnFinishGeneration();
-
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
+public:	
 
-	void GenerateTree();
+	// Sets default values for this component's properties
+	ATreeRoot();
 
-	void SpawnLogsRecursive(ULogData* NextData, ATree* ParentTree);
+public:
+	/*
+		Generates tree with given quality if not already generated
+	*/
+	void GenerateTree(EChunkQuality TreeQuality);
 
+	/*
+		Initiates the recursive call of BuildTreeData() and returns a LogData array
+	*/
+	TArray<ULogData*> GenerateTreeData();
+	
+	/*
+		Called by first branch to notify that the tree is fully generated and rendered
+	*/
+	void OnFinishGeneration();
+
+
+/*
+	Generation functions
+*/
+private:
+
+	/*
+		Recursively builds information of each log in the tree, excluding mesh data and populates LogDatas array
+	*/
+	void BuildTreeData(int MaxDepth, int CurrentDepth, ULogData* Parent, bool Extension, TArray<ULogData*>& LogDatas);
+	
+	/*
+		Builds only the tree's mesh without any collision or new actors, very computationally cheap but should
+		be used for outer unimportant chunks
+	*/
 	void GenerateMeshOnlyRecursive(ULogData* NextData);
 
-	void GenerateTreeData();
+	/*
+		Spawns the physical tree, very computationally expensive and should be used in moderation
+	*/
+	void SpawnLogsRecursive(ULogData* NextData, ATree* ParentTree);
+
+/*
+	Getter functions
+*/
+private:
+	TArray<ULogData*> GetTreeLogData();
 
 public:	
+
+
 	ATree* Root;
 
 	int TreeSeed;
@@ -55,16 +97,10 @@ public:
 	UProceduralMeshComponent* MaskMesh;
 	int nextMeshSectionIndex = 0;
 
-	UPROPERTY(BlueprintReadOnly, VisibleAnywhere)
-	TArray<FVector> Vertices;
-	UPROPERTY(BlueprintReadOnly, VisibleAnywhere)
-	TArray<int32> Triangles;
-	UPROPERTY(BlueprintReadOnly, VisibleAnywhere)
-	TArray<FVector2D> UVs;
-	UPROPERTY(BlueprintReadOnly, VisibleAnywhere)
-	TArray<FVector> Normals;
-	TArray<FProcMeshTangent> Tangents;
-	TArray<FColor> Colors;
+	FProcMeshInfo LogMeshInfo;
+
+	FProcMeshInfo LeavesMeshInfo;
+
 
 public:
 	FJsonObject SerializeObject() override;
@@ -78,8 +114,17 @@ public:
 
 public:
 
-	void BuildTreeData(int MaxDepth, int CurrentDepth, ULogData* Parent, bool Extension);
+
+	// Custom Range functions that simply shortens references to the original RandRange function
 	static int RandRange(int Min, int Max, FRandomStream& Stream);
 	static float FRandRange(float Min, float Max, FRandomStream& Stream);
 
 };
+
+/*
+	Notes:
+	Spawning logs take a lot of computational power, so we need to separate generating the full physical tree, and just the mesh without collision
+	Full physical tree will be generated when player is close to the chunk containing those trees, or other means
+	Mesh will only be generated for trees that are in outer chunks
+
+*/

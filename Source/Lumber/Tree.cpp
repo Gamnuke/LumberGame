@@ -50,10 +50,168 @@ void ATree::BeginPlay()
 	Super::BeginPlay();
 }
 
-/*
-	Generates and returns mesh data created for this log, assuming it already has LogInfo
-*/
-FProcMeshInfo ATree::CreateMeshData(bool bBuildLeaves, FData NewLogData, FRandomStream NumberStream, FVector LocalOrigin = FVector::ZeroVector, FVector UpVector = FVector::UpVector) {
+FProcMeshInfo ATree::CreateMeshData(bool bBuildLeaves, FData NewLogData, FRandomStream NumberStream, EChunkQuality RenderQuality = EChunkQuality::Low, FVector LocalOrigin = FVector::ZeroVector, FVector UpVector = FVector::UpVector) {
+	switch (RenderQuality)
+	{
+	case Low:
+		return GetLowQualityMesh(bBuildLeaves, NewLogData, NumberStream, LocalOrigin, UpVector);
+	case High:
+		return GetHighQualityMesh(bBuildLeaves, NewLogData, NumberStream, LocalOrigin, UpVector);
+		break;
+	default:
+		return GetHighQualityMesh(bBuildLeaves, NewLogData, NumberStream, LocalOrigin, UpVector);
+		break;
+	}
+}
+
+/* builds geometry for this branch */
+void ATree::BuildTreeMesh(bool bBuildLeaves) {
+
+	if (!ThisLogData.bMakeLeaves) {
+		// make empty mesh section as placeholder for leaves
+		AsyncTask(GamePriority, [this]() {
+			Mesh->CreateMeshSection(0, TArray<FVector>(), TArray<int32>(), TArray<FVector>(), TArray<FVector2D>(), TArray<FColor>(), TArray<FProcMeshTangent>(), false);
+		});
+	}
+	else {
+		FProcMeshInfo NewLeavesMeshInfo = CreateLeavesMeshData(ThisLogData, TreeRoot->NumberStream, FVector::ZeroVector, FVector::UpVector);
+		LeafMeshInfo = NewLeavesMeshInfo;
+
+		AsyncTask(GamePriority, [this]() {
+			Mesh->CreateMeshSection(
+				LeafMeshInfo.Index,
+				LeafMeshInfo.Vertices,
+				LeafMeshInfo.Triangles,
+				LeafMeshInfo.Normals,
+				LeafMeshInfo.UVs,
+				LeafMeshInfo.Colors,
+				LeafMeshInfo.MeshTangents,
+				false
+			);
+
+		Mesh->SetMaterial(LeafMeshIndex, ThisLogData.LeafMaterial);
+		});
+	}
+
+	FProcMeshInfo NewMeshInfo = CreateMeshData(bBuildLeaves, ThisLogData, TreeRoot->NumberStream);
+	BranchMeshInfo = NewMeshInfo;
+
+	AsyncTask(GamePriority, [this]() {
+		Mesh->CreateMeshSection(
+			BranchMeshInfo.Index,
+			BranchMeshInfo.Vertices,
+			BranchMeshInfo.Triangles,
+			BranchMeshInfo.Normals,
+			BranchMeshInfo.UVs,
+			BranchMeshInfo.Colors,
+			BranchMeshInfo.MeshTangents,
+			false
+		);
+
+		Mesh->SetMaterial(LogMeshIndex, ThisLogData.LogMaterial);
+	});
+}
+
+/* creates geometry at index 0 for this tree */
+FProcMeshInfo ATree::CreateLeavesMeshData(FData NewLogData, FRandomStream NumberStream, FVector LocalOrigin = FVector::ZeroVector, FVector UpVector = FVector::UpVector)
+{
+	// make polygons for the leaves
+	TArray<FVector> LeafVertices;
+	TArray<int32> LeafTriangles;
+	TArray<FVector2D> LeafUVs;
+	TArray<FVector> LeafNormals;
+	TArray<FProcMeshTangent> LeafTangents;
+	float Range = NewLogData.RandLeafThreshold * NewLogData.BranchHeight;
+
+	for (int i = 0; i < NewLogData.NumLeaves; i++) {
+		// get a random location for the leaf
+		float RandLeafX = ATreeRoot::FRandRange(-Range, Range, NumberStream);
+		float RandLeafY = ATreeRoot::FRandRange(-Range, Range, NumberStream);
+		float RandLeafZ = ATreeRoot::FRandRange(-2*Range, Range, NumberStream);
+
+		// get a random normal for the leaf's rotation
+		float RandLeafNormX = ATreeRoot::FRandRange(-1.0f, 1.0f, NumberStream);
+		float RandLeafNormY = ATreeRoot::FRandRange(-1.0f, 1.0f, NumberStream);
+		float RandLeafNormZ = ATreeRoot::FRandRange(-1.0f, 1.0f, NumberStream);
+
+		/* get 3 random normals */
+
+		// first normal calculated by random numbers
+		TArray<FVector> RandomNormals;
+		FVector RandomNormal1 = FVector(RandLeafNormX, RandLeafNormY, RandLeafNormZ).GetSafeNormal();
+		RandomNormals.Add(RandomNormal1);
+
+		// second normal calculated by getting vector perpendicular to normal 1 in any direction
+		FVector RandomNormal2 = FVector::VectorPlaneProject(
+			FVector(ATreeRoot::FRandRange(-1.0f, 1.0f, NumberStream), ATreeRoot::FRandRange(-1.0f, 1.0f, NumberStream), ATreeRoot::FRandRange(-1.0f, 1.0f, NumberStream)),
+			RandomNormal1
+		).GetSafeNormal();
+		RandomNormals.Add(RandomNormal2);
+
+		// get third normal by getting vector perpendicular to BOTH vector 1 and 2, only one solution
+		FVector RandomNormal3 = UKismetMathLibrary::RotateAngleAxis(RandomNormal1, 90, RandomNormal2);
+		RandomNormals.Add(RandomNormal3);
+
+		// for each position for a leaf, make 3 planes of leaves at perpendicular angles to eachother
+		for (int j = 0; j < 3; j++)
+		{
+			LeafNormals.Add(RandomNormals[j]);
+
+			FVector LeafPoint = FVector(RandLeafX, RandLeafY, NewLogData.BranchHeight + RandLeafZ);
+			int leafSizeMult = FMath::RandRange(0.5, 1.5);
+
+			// projects a random point to the plane to get the location of the first point of the leaf vertex
+			FVector next_vertex_offset = FVector::VectorPlaneProject(
+				FVector(ATreeRoot::FRandRange(-1.0f, 1.0f, NumberStream), ATreeRoot::FRandRange(-1.0f, 1.0f, NumberStream), ATreeRoot::FRandRange(-1.0f, 1.0f, NumberStream)),
+				RandomNormals[j]
+			).GetSafeNormal() * NewLogData.LeafSize * leafSizeMult;
+			//DrawDebugPoint(GetWorld(), next_vertex_offset, 4, FColor::Green, false, 10, 6);
+
+			TArray<int32> Verts;
+			int Angle = 0;
+			while (Angle < 360) {
+				next_vertex_offset = UKismetMathLibrary::RotateAngleAxis(next_vertex_offset, 90, RandomNormals[j]);
+
+				Verts.Add(LeafVertices.Add(next_vertex_offset + LeafPoint + LocalOrigin));
+
+				if (Angle == 0) {
+					LeafUVs.Add(FVector2D(0, 0));
+				}
+				else if (Angle == 90) {
+					LeafUVs.Add(FVector2D(1, 0));
+				}
+				else if (Angle == 180) {
+					LeafUVs.Add(FVector2D(1, 1));
+				}
+				else if (Angle == 270) {
+					LeafUVs.Add(FVector2D(0, 1));
+				}
+				Angle += 90;
+			}
+
+			TArray<int32> Tris;
+			UKismetProceduralMeshLibrary::ConvertQuadToTriangles(Tris, Verts[0], Verts[1], Verts[2], Verts[3]);
+			LeafTriangles.Append(Tris);
+		}
+		
+	}
+	UKismetProceduralMeshLibrary::CalculateTangentsForMesh(LeafVertices, LeafTriangles, LeafUVs, LeafNormals, LeafTangents);
+
+	// Store mesh info to this branch
+	FProcMeshInfo NewMeshInfo = FProcMeshInfo();
+	NewMeshInfo.Index = LeafMeshIndex;
+	NewMeshInfo.Vertices = LeafVertices;
+	NewMeshInfo.Triangles = LeafTriangles;
+	NewMeshInfo.Normals = LeafNormals;
+	NewMeshInfo.UVs = LeafUVs;
+	NewMeshInfo.Colors = TArray<FColor>();
+	NewMeshInfo.MeshTangents = LeafTangents;
+
+	return NewMeshInfo; 
+}
+
+FProcMeshInfo ATree::GetHighQualityMesh(bool bBuildLeaves, FData NewLogData, FRandomStream NumberStream, FVector LocalOrigin, FVector UpVector)
+{
 	TArray<FVector> Vertices;
 	TArray<int32> Triangles;
 	TArray<FVector2D> UVs;
@@ -165,152 +323,103 @@ FProcMeshInfo ATree::CreateMeshData(bool bBuildLeaves, FData NewLogData, FRandom
 	NewMeshInfo.UVs = UVs;
 	NewMeshInfo.Colors = TArray<FColor>();
 	NewMeshInfo.MeshTangents = Tangents;
+
 	return NewMeshInfo;
 }
 
-/* builds geometry for this branch */
-void ATree::BuildTreeMesh(bool bBuildLeaves) {
-
-	if (bBuildLeaves == false) {
-		// make empty mesh section as placeholder for leaves
-		AsyncTask(GamePriority, [this]() {
-			Mesh->CreateMeshSection(0, TArray<FVector>(), TArray<int32>(), TArray<FVector>(), TArray<FVector2D>(), TArray<FColor>(), TArray<FProcMeshTangent>(), false);
-		});
-	}
-	else {
-		MakeLeaves();
-	}
-
-	FProcMeshInfo NewMeshInfo = CreateMeshData(bBuildLeaves, ThisLogData, TreeRoot->NumberStream);
-	BranchMeshInfo = NewMeshInfo;
-
-	AsyncTask(GamePriority, [this]() {
-		Mesh->CreateMeshSection(
-			BranchMeshInfo.Index,
-			BranchMeshInfo.Vertices,
-			BranchMeshInfo.Triangles,
-			BranchMeshInfo.Normals,
-			BranchMeshInfo.UVs,
-			BranchMeshInfo.Colors,
-			BranchMeshInfo.MeshTangents,
-			false
-		);
-
-		Mesh->SetMaterial(LogMeshIndex, ThisLogData.LogMaterial);
-	});
-}
-
-/* creates geometry at index 0 for this tree */
-void ATree::MakeLeaves()
+FProcMeshInfo ATree::GetLowQualityMesh(bool bBuildLeaves, FData NewLogData, FRandomStream NumberStream, FVector LocalOrigin, FVector UpVector)
 {
+	NewLogData.INCREMENT = 90;
+	TArray<FVector> Vertices;
+	TArray<int32> Triangles;
+	TArray<FVector2D> UVs;
+	TArray<FVector> Normals;
+	TArray<FProcMeshTangent> Tangents;
+	int maxVertInRow = 360 / NewLogData.INCREMENT;
 
-	// make polygons for the leaves
-	TArray<FVector> LeafVertices;
-	TArray<int32> LeafTriangles;
-	TArray<FVector2D> LeafUVs;
-	TArray<FVector> LeafNormals;
-	TArray<FProcMeshTangent> LeafTangents;
-	float Range = ThisLogData.RandLeafThreshold * BranchHeight;
+	// for each row of vertices in the branch..
+	for (int row = 0; row < 2; row++) {
+		FVector next_vertex_offset = FVector(NewLogData.WIDTH, 0, 0);
 
-	for (int i = 0; i < ThisLogData.NumLeaves; i++) {
-		// get a random location for the leaf
-		float RandLeafX = ATreeRoot::FRandRange(-Range, Range, TreeRoot->NumberStream);
-		float RandLeafY = ATreeRoot::FRandRange(-Range, Range, TreeRoot->NumberStream);
-		float RandLeafZ = ATreeRoot::FRandRange(-2*Range, Range, TreeRoot->NumberStream);
+		FRotator differenceRot = UpVector.Rotation() - FVector::UpVector.Rotation();
+		// place a vertex, then rotate by Angle to place the next vertex
+		FVector FirstVertex;
+		int Angle = 0;
+		while (Angle < 360) {
+			FVector newVertex = next_vertex_offset;
+			newVertex.Z = row * NewLogData.SECTION_HEIGHT * (NewLogData.ROWS - 1);
 
-		// get a random normal for the leaf's rotation
-		float RandLeafNormX = ATreeRoot::FRandRange(-1.0f, 1.0f, TreeRoot->NumberStream);
-		float RandLeafNormY = ATreeRoot::FRandRange(-1.0f, 1.0f, TreeRoot->NumberStream);
-		float RandLeafNormZ = ATreeRoot::FRandRange(-1.0f, 1.0f, TreeRoot->NumberStream);
+			// Add rotation offset from args
+			FRotator newVertRot = newVertex.Rotation();
+			float newVertLength = newVertex.Length();
+			newVertex = differenceRot.RotateVector(newVertex);
 
-		/* get 3 random normals */
+			// Add location offset from args
+			newVertex += LocalOrigin;
 
-		// first normal calculated by random numbers
-		TArray<FVector> RandomNormals;
-		FVector RandomNormal1 = FVector(RandLeafNormX, RandLeafNormY, RandLeafNormZ).GetSafeNormal();
-		RandomNormals.Add(RandomNormal1);
-
-		// second normal calculated by getting vector perpendicular to normal 1 in any direction
-		FVector RandomNormal2 = FVector::VectorPlaneProject(
-			FVector(ATreeRoot::FRandRange(-1.0f, 1.0f, TreeRoot->NumberStream), ATreeRoot::FRandRange(-1.0f, 1.0f, TreeRoot->NumberStream), ATreeRoot::FRandRange(-1.0f, 1.0f, TreeRoot->NumberStream)),
-			RandomNormal1
-		).GetSafeNormal();
-		RandomNormals.Add(RandomNormal2);
-
-		// get third normal by getting vector perpendicular to BOTH vector 1 and 2, only one solution
-		FVector RandomNormal3 = UKismetMathLibrary::RotateAngleAxis(RandomNormal1, 90, RandomNormal2);
-		RandomNormals.Add(RandomNormal3);
-
-		// for each position for a leaf, make 3 planes of leaves at perpendicular angles to eachother
-		for (int j = 0; j < 3; j++)
-		{
-			LeafNormals.Add(RandomNormals[j]);
-
-			FVector LeafPoint = FVector(RandLeafX, RandLeafY, BranchHeight + RandLeafZ);
-			int leafSizeMult = FMath::RandRange(0.5, 1.5);
-
-			// projects a random point to the plane to get the location of the first point of the leaf vertex
-			FVector next_vertex_offset = FVector::VectorPlaneProject(
-				FVector(ATreeRoot::FRandRange(-1.0f, 1.0f, TreeRoot->NumberStream), ATreeRoot::FRandRange(-1.0f, 1.0f, TreeRoot->NumberStream), ATreeRoot::FRandRange(-1.0f, 1.0f, TreeRoot->NumberStream)),
-				RandomNormals[j]
-			).GetSafeNormal() * ThisLogData.LeafSize * leafSizeMult;
-			//DrawDebugPoint(GetWorld(), next_vertex_offset, 4, FColor::Green, false, 10, 6);
-
-			TArray<int32> Verts;
-			int Angle = 0;
-			while (Angle < 360) {
-				next_vertex_offset = UKismetMathLibrary::RotateAngleAxis(next_vertex_offset, 90, RandomNormals[j]);
-
-				Verts.Add(LeafVertices.Add(next_vertex_offset + LeafPoint));
-
-				if (Angle == 0) {
-					LeafUVs.Add(FVector2D(0, 0));
-				}
-				else if (Angle == 90) {
-					LeafUVs.Add(FVector2D(1, 0));
-				}
-				else if (Angle == 180) {
-					LeafUVs.Add(FVector2D(1, 1));
-				}
-				else if (Angle == 270) {
-					LeafUVs.Add(FVector2D(0, 1));
-				}
-				Angle += 90;
+			if (Angle == 0) {
+				FirstVertex = newVertex;
 			}
 
-			TArray<int32> Tris;
-			UKismetProceduralMeshLibrary::ConvertQuadToTriangles(Tris, Verts[0], Verts[1], Verts[2], Verts[3]);
-			LeafTriangles.Append(Tris);
+			UVs.Add(FVector2D(Angle / NewLogData.INCREMENT, row));
+
+			// add vertex to the array
+			Vertices.Add(newVertex);
+			//UKismetSystemLibrary::DrawDebugString(GetWorld(), GetActorLocation() + newVertex, FString::FromInt(row * (360 / INCREMENT) + Angle / INCREMENT), (AActor*)0, FLinearColor::White, 60);
+			Angle += NewLogData.INCREMENT;
+			next_vertex_offset = UKismetMathLibrary::RotateAngleAxis(next_vertex_offset, NewLogData.INCREMENT, FVector(0, 0, 1));
 		}
-		
+
+		UVs.Add(FVector2D(maxVertInRow, row));
 	}
-	UKismetProceduralMeshLibrary::CalculateTangentsForMesh(LeafVertices, LeafTriangles, LeafUVs, LeafNormals, LeafTangents);
+
+	// add triangles to connect vertices on bottom base of branch
+	for (int i = 0; i < maxVertInRow - 2; i++) {
+		Triangles.Add(0);
+		Triangles.Add((i + 1));
+		Triangles.Add((i + 2));
+	}
+
+	// add triangles that connect the vertices from one row to the next row up
+	for (int row = 0; row < 1; row++) {
+
+		//add triangles for the sides
+		for (int i = 0; i < maxVertInRow; i++) {
+			int next_i = i + 1;
+			if (next_i == maxVertInRow) {
+				next_i = 0;
+			}
+			Triangles.Add((row * (360 / NewLogData.INCREMENT) + i));
+			Triangles.Add(((row + 1) * (360 / NewLogData.INCREMENT) + next_i));
+			Triangles.Add((row * (360 / NewLogData.INCREMENT) + next_i));
+
+			Triangles.Add((row * (360 / NewLogData.INCREMENT) + i));
+			Triangles.Add(((row + 1) * (360 / NewLogData.INCREMENT) + i));
+			Triangles.Add(((row + 1) * (360 / NewLogData.INCREMENT) + next_i));
+		}
+	}
+
+	// add triangles to connect vertices on Top base of branch
+	for (int i = 0; i < maxVertInRow - 2; i++) {
+		Triangles.Add((NewLogData.ROWS - 1) * maxVertInRow + 0);
+		Triangles.Add((NewLogData.ROWS - 1) * maxVertInRow + (i + 2));
+		Triangles.Add((NewLogData.ROWS - 1) * maxVertInRow + (i + 1));
+	}
+
+	// create the mesh for this tree
+	UKismetProceduralMeshLibrary::CalculateTangentsForMesh(Vertices, Triangles, UVs, Normals, Tangents);
 
 	// Store mesh info to this branch
 	FProcMeshInfo NewMeshInfo = FProcMeshInfo();
-	NewMeshInfo.Index = LeafMeshIndex;
-	NewMeshInfo.Vertices = LeafVertices;
-	NewMeshInfo.Triangles = LeafTriangles;
-	NewMeshInfo.Normals = LeafNormals;
-	NewMeshInfo.UVs = LeafUVs;
+	NewMeshInfo.Index = LogMeshIndex;
+	NewMeshInfo.Vertices = Vertices;
+	NewMeshInfo.Triangles = Triangles;
+	NewMeshInfo.Normals = Normals;
+	NewMeshInfo.UVs = UVs;
 	NewMeshInfo.Colors = TArray<FColor>();
-	NewMeshInfo.MeshTangents = LeafTangents;
-	LeafMeshInfo = NewMeshInfo;
+	NewMeshInfo.MeshTangents = Tangents;
 
-	AsyncTask(GamePriority, [this]() {
-		Mesh->CreateMeshSection(
-			LeafMeshInfo.Index,
-			LeafMeshInfo.Vertices,
-			LeafMeshInfo.Triangles,
-			LeafMeshInfo.Normals,
-			LeafMeshInfo.UVs,
-			LeafMeshInfo.Colors,
-			LeafMeshInfo.MeshTangents,
-			false
-		);
-
-		Mesh->SetMaterial(LeafMeshIndex, ThisLogData.LeafMaterial);
-	});
+	return NewMeshInfo;
 }
 
 /*
@@ -332,7 +441,7 @@ void ATree::GenerateMeshRecursive(ATree* BranchToGenerate) {
 /* cuts the tree */
 void ATree::CutTree(FVector CutLocation, UProceduralMeshComponent *ProcMesh, ATree *Tree) {
 	FVector BottomLocation = ProcMesh->GetComponentLocation();
-	FVector TopLocation = BottomLocation + ProcMesh->GetUpVector() * BranchHeight;
+	FVector TopLocation = BottomLocation + ProcMesh->GetUpVector() * ThisLogData.BranchHeight;
 
 	// get cut location along line inside branch
 	FVector CutCentre = UKismetMathLibrary::FindClosestPointOnLine(CutLocation, BottomLocation, ProcMesh->GetUpVector());
@@ -435,8 +544,8 @@ void ATree::CutTree(FVector CutLocation, UProceduralMeshComponent *ProcMesh, ATr
 	ATree* NewTree = GetWorld()->SpawnActor<ATree>(this->GetClass(), CutWorldLocation, OtherRotation);
 
 	NewTree->TreeRoot = TreeRoot;
-	NewTree->BranchHeight = TopSegLength;
-	this->BranchHeight = BottomSegLength;
+	NewTree->ThisLogData.BranchHeight = TopSegLength;
+	this->ThisLogData.BranchHeight = BottomSegLength;
 	NewTree->ThisLogData.WIDTH = this->ThisLogData.WIDTH;
 
 	//----------------------------
@@ -486,7 +595,7 @@ void ATree::CutTree(FVector CutLocation, UProceduralMeshComponent *ProcMesh, ATr
 		this->BoxCollision->SetSimulatePhysics(false);
 	}
 
-	if (BranchHeight < ThisLogData.WIDTH * 3) {
+	if (ThisLogData.BranchHeight < ThisLogData.WIDTH * 3) {
 		//this->DetachRootComponentFromParent(true);
 	}
 
@@ -537,7 +646,7 @@ void ATree::RemoveLeavesRecursive(ATree* Root, ATree* NextTree) {
 
 /* sets up collision and data for a given tree */
 void ATree::SetupTree(ATree* Tree, int NewBranchHeight, int NewBranchWidth) {
-	Tree->BranchHeight = NewBranchHeight;
+	Tree->ThisLogData.BranchHeight = NewBranchHeight;
 
 	// setup the capsule component
 	//Tree->BoxCollision->SetCapsuleHalfHeight(NewBranchHeight / 2);

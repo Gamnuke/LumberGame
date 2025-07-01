@@ -21,13 +21,19 @@
 #include "LogData.h"
 
 class ULogData;
+#define GamePriority ENamedThreads::GameThread 
+#define BackgroundPriority ENamedThreads::AnyBackgroundHiPriTask
 
 // Sets default values for this component's properties
 ATreeRoot::ATreeRoot()
 {
 	MaskMesh = CreateDefaultSubobject<UProceduralMeshComponent>(FName("TreeMeshComponent"));
-	MaskMesh->bUseComplexAsSimpleCollision = false;
+	/*MaskMesh->bUseComplexAsSimpleCollision = false;
 	MaskMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	MaskMesh->SetSimulatePhysics(false);*/
+
+	MaskMesh->bUseComplexAsSimpleCollision = true;
+	MaskMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	MaskMesh->SetSimulatePhysics(false);
 }
 
@@ -57,104 +63,91 @@ void ATreeRoot::BeginPlay()
 /*
 Main function called to generate tree
 */
-void ATreeRoot::GenerateTree() {
+void ATreeRoot::GenerateTree(EChunkQuality TreeQuality) {
+
 	// Sets up stream with given seed
 	NumberStream = FRandomStream(TreeSeed);
-	GenerateTreeData();
 
-	SpawnLogsRecursive(AllLogData[0], nullptr);
-	/*GenerateMeshOnlyRecursive(AllLogData[0]);
+	// Generates LogData
+	AllLogData = GenerateTreeData();
 
-	MaskMesh->CreateMeshSection(
-		0,
-		Vertices,
-		Triangles,
-		Normals,
-		UVs,
-		Colors,
-		Tangents,
-		false
-	);
-	MaskMesh->SetMaterial(0, InitialTreeData.LogMaterial);
+	switch (TreeQuality)
+	{
+	case Low:
+		AsyncTask(BackgroundPriority, [this]() {
 
-	nextMeshSectionIndex++;*/
+			GenerateMeshOnlyRecursive(AllLogData[0]);
+
+			AsyncTask(GamePriority, [this]() {
+
+				// Create Log mesh
+				MaskMesh->CreateMeshSection(
+					0,
+					LogMeshInfo.Vertices,
+					LogMeshInfo.Triangles,
+					LogMeshInfo.Normals,
+					LogMeshInfo.UVs,
+					LogMeshInfo.Colors,
+					LogMeshInfo.MeshTangents,
+					true
+				);
+				MaskMesh->SetMaterial(0, InitialTreeData.LogMaterial);
+
+				// Create leaves mesh
+				MaskMesh->CreateMeshSection(
+					1,
+					LeavesMeshInfo.Vertices,
+					LeavesMeshInfo.Triangles,
+					LeavesMeshInfo.Normals,
+					LeavesMeshInfo.UVs,
+					LeavesMeshInfo.Colors,
+					LeavesMeshInfo.MeshTangents,
+					false
+				);
+				MaskMesh->SetMaterial(1, InitialTreeData.LeafMaterial);
+
+			});
+		});
+		break;
+
+	case High:
+
+		SpawnLogsRecursive(AllLogData[0], nullptr);
+
+		break;
+	default:
+		break;
+	}
 }
 
 /*
 Generates data for tree, including position, rotation of branches
 */
-void ATreeRoot::GenerateTreeData() {
+TArray<ULogData*> ATreeRoot::GenerateTreeData() {
+
+	// Create new LogData array
+	TArray<ULogData*> NewLogDatas = TArray<ULogData*>();
+
 	// Sets up stream with given seed
 	NumberStream = FRandomStream(TreeSeed);
 
+	// Setup first log data array entry
 	ULogData* FirstLogData = NewObject<ULogData>();
 	FirstLogData->Data = InitialTreeData;
 
-	// Setup variables for this branch
 	FirstLogData->Data.ROWS *= FirstLogData->Data.TrunkHeightMultiplier;
 	FirstLogData->Data.BranchHeight = (FirstLogData->Data.ROWS - 1) * FirstLogData->Data.SECTION_HEIGHT;
 
 	FirstLogData->Data.bPartOfRoot = true;
 	FirstLogData->Data.LocalLocation = FVector::UpVector * FirstLogData->Data.BranchHeight / 2;
-	AllLogData.Add(FirstLogData);
+	NewLogDatas.Add(FirstLogData);
 
-	BuildTreeData(4, 0, FirstLogData, true);
+	BuildTreeData(4, 0, FirstLogData, true, NewLogDatas);
+
+	return NewLogDatas;
 }
 
-void ATreeRoot::SpawnLogsRecursive(ULogData *NextData, ATree* ParentTree) {
-	FData Data = NextData->Data;
-	FVector NewSpawnLocation = GetActorLocation() + Data.LocalLocation;
-
-	FVector NewLogLocalLocation = Data.LocalLocation;
-	FRotator NewLogRotation = Data.UpVector.Rotation();
-	NewLogRotation.Pitch += -90;
-	ATree* NewTree = GetWorld()->SpawnActor<ATree>(TreeClass, NewSpawnLocation, NewLogRotation);
-	NewTree->TreeRoot = this;
-	NewTree->ThisLogData = NextData->Data;
-	NewTree->BuildTreeMesh(Data.bMakeLeaves);
-
-	NewTree->SetupTree(NewTree, Data.BranchHeight, Data.WIDTH);
-
-	if (ParentTree != nullptr) {
-		NewTree->BoxCollision->WeldTo(ParentTree->BoxCollision);
-	}
-
-	for (ULogData* Child : NextData->Children) {
-		SpawnLogsRecursive(Child, NewTree);
-	}
-
-	if (NextData->Parent != nullptr) {
-		DrawDebugLine(GetWorld(), NewSpawnLocation + Data.UpVector * Data.BranchHeight / 2, NewSpawnLocation - Data.UpVector * Data.BranchHeight / 2, FColor::Blue, false, 100, 0, 10);
-	}
-}
-
-void ATreeRoot::GenerateMeshOnlyRecursive(ULogData* NextData) {
-	FData Data = NextData->Data;
-
-	FProcMeshInfo NewMeshInfo = ATree::CreateMeshData(false, Data, NumberStream, Data.LocalLocation - Data.UpVector * Data.BranchHeight / 2, Data.UpVector);
-
-	// We need to shift indexes of all triangles by the number of vertices already in the array,
-	// so the new triangles' index correspond to the correct vertex
-	for (int i = 0; i < NewMeshInfo.Triangles.Num(); i++)
-	{
-		NewMeshInfo.Triangles[i] += Vertices.Num();
-	}
-
-	Vertices.Append(NewMeshInfo.Vertices);
-	Triangles.Append(NewMeshInfo.Triangles);
-	Normals.Append(NewMeshInfo.Normals);
-	UVs.Append(NewMeshInfo.UVs);
-	Colors.Append(NewMeshInfo.Colors);
-	Tangents.Append(NewMeshInfo.MeshTangents);
-
-	for (ULogData* Child : NextData->Children) {
-		GenerateMeshOnlyRecursive(Child);
-	}
-
-}
-
-/* main function used to recursively build the tree ground up */
-void ATreeRoot::BuildTreeData(int MaxDepth, int CurrentDepth, ULogData* Parent, bool Extension) {
+void ATreeRoot::BuildTreeData(int MaxDepth, int CurrentDepth, ULogData* Parent, bool Extension, TArray<ULogData*>& LogDatas) {
 	// stop building the tree if this branch exceeds the max depth
 	if (CurrentDepth > MaxDepth) { return; }
 
@@ -183,7 +176,7 @@ void ATreeRoot::BuildTreeData(int MaxDepth, int CurrentDepth, ULogData* Parent, 
 
 		// spawns new branch and setups data
 		ULogData* NewLogData = NewObject<ULogData>();
-		NewLogData->Data = Parent->Data;
+		NewLogData->Data = InitialTreeData;
 		NewLogData->Parent = Parent;
 		NewLogData->Data.WIDTH = FMath::Clamp(InitialTreeData.WIDTH * (MaxDepth - CurrentDepth) / MaxDepth, InitialTreeData.WIDTH / 4, InitialTreeData.WIDTH);
 		NewLogData->Data.ROWS = FRandRange(InitialTreeData.ROWS / (CurrentDepth + 1), InitialTreeData.ROWS, NumberStream);
@@ -207,25 +200,94 @@ void ATreeRoot::BuildTreeData(int MaxDepth, int CurrentDepth, ULogData* Parent, 
 		//chance to extend this branch, recursing with the same depth
 		bool ExtendThis = (RandRange(0, 100, NumberStream) <= NewLogData->Data.ExtendChance);
 		if (CurrentDepth == MaxDepth && !ExtendThis) {
-			NewLogData->Data.bMakeLeaves = false;
+			NewLogData->Data.bMakeLeaves = true;
 
 		}
 		else {
 			NewLogData->Data.bMakeLeaves = false;
 
 		}
-		AllLogData.Add(NewLogData);
+		LogDatas.Add(NewLogData);
 
 		if (ExtendThis) {
 			//Cast<ALumberGameMode>(GetWorld()->GetAuthGameMode())->TaskQueue.Enqueue();
-			BuildTreeData(MaxDepth, CurrentDepth, NewLogData, true);
+			BuildTreeData(MaxDepth, CurrentDepth, NewLogData, true, LogDatas);
 		}
 		else {
 			//Cast<ALumberGameMode>(GetWorld()->GetAuthGameMode())->TaskQueue.Enqueue();
-			BuildTreeData(MaxDepth, CurrentDepth + 1, NewLogData, false);
+			BuildTreeData(MaxDepth, CurrentDepth + 1, NewLogData, false, LogDatas);
 		}
 
 
+	}
+}
+
+void ATreeRoot::GenerateMeshOnlyRecursive(ULogData* NextData) {
+	FData Data = NextData->Data;
+
+	FProcMeshInfo NewMeshInfo = ATree::CreateMeshData(false, Data, NumberStream, EChunkQuality::Low, Data.LocalLocation - Data.UpVector * Data.BranchHeight / 2, Data.UpVector);
+
+	// We need to shift indexes of all triangles by the number of vertices already in the array,
+	// so the new triangles' index correspond to the correct vertex
+	for (int i = 0; i < NewMeshInfo.Triangles.Num(); i++)
+	{
+		NewMeshInfo.Triangles[i] += LogMeshInfo.Vertices.Num();
+	}
+
+	LogMeshInfo.Vertices.Append(NewMeshInfo.Vertices);
+	LogMeshInfo.Triangles.Append(NewMeshInfo.Triangles);
+	LogMeshInfo.Normals.Append(NewMeshInfo.Normals);
+	LogMeshInfo.UVs.Append(NewMeshInfo.UVs);
+	LogMeshInfo.Colors.Append(NewMeshInfo.Colors);
+	LogMeshInfo.MeshTangents.Append(NewMeshInfo.MeshTangents);
+
+	if (Data.bMakeLeaves) {
+		FProcMeshInfo NewLeavesMeshInfo = ATree::CreateLeavesMeshData(Data, NumberStream, Data.LocalLocation, Data.UpVector);
+
+		for (int i = 0; i < NewLeavesMeshInfo.Triangles.Num(); i++)
+		{
+			NewLeavesMeshInfo.Triangles[i] += LeavesMeshInfo.Vertices.Num();
+		}
+
+		LeavesMeshInfo.Vertices.Append(NewLeavesMeshInfo.Vertices);
+		LeavesMeshInfo.Triangles.Append(NewLeavesMeshInfo.Triangles);
+		LeavesMeshInfo.Normals.Append(NewLeavesMeshInfo.Normals);
+		LeavesMeshInfo.UVs.Append(NewLeavesMeshInfo.UVs);
+		LeavesMeshInfo.Colors.Append(NewLeavesMeshInfo.Colors);
+		LeavesMeshInfo.MeshTangents.Append(NewLeavesMeshInfo.MeshTangents);
+
+	}
+
+	for (ULogData* Child : NextData->Children) {
+		GenerateMeshOnlyRecursive(Child);
+	}
+
+}
+
+void ATreeRoot::SpawnLogsRecursive(ULogData *NextData, ATree* ParentTree) {
+	FData Data = NextData->Data;
+	FVector NewSpawnLocation = GetActorLocation() + Data.LocalLocation;
+
+	FVector NewLogLocalLocation = Data.LocalLocation;
+	FRotator NewLogRotation = Data.UpVector.Rotation();
+	NewLogRotation.Pitch += -90;
+	ATree* NewTree = GetWorld()->SpawnActor<ATree>(TreeClass, NewSpawnLocation, NewLogRotation);
+	NewTree->TreeRoot = this;
+	NewTree->ThisLogData = NextData->Data;
+	NewTree->BuildTreeMesh(Data.bMakeLeaves);
+
+	NewTree->SetupTree(NewTree, Data.BranchHeight, Data.WIDTH);
+
+	if (ParentTree != nullptr) {
+		NewTree->BoxCollision->WeldTo(ParentTree->BoxCollision);
+	}
+
+	for (ULogData* Child : NextData->Children) {
+		SpawnLogsRecursive(Child, NewTree);
+	}
+
+	if (NextData->Parent != nullptr) {
+		DrawDebugLine(GetWorld(), NewSpawnLocation + Data.UpVector * Data.BranchHeight / 2, NewSpawnLocation - Data.UpVector * Data.BranchHeight / 2, FColor::Blue, false, 100, 0, 10);
 	}
 }
 

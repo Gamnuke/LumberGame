@@ -7,6 +7,7 @@
 #include "Containers/Queue.h"
 #include "ProceduralMeshComponent.h"
 #include "TreeClasses/LogData.h"
+#include "TerrainClasses/Terrain.h"
 #include "Tree.generated.h"
 
 class UNiagaraComponent;
@@ -19,6 +20,7 @@ class UStaticMeshComponent;
 class UBoxComponent;
 class ATreeRoot;
 struct FRandomStream;
+enum EChunkQuality;
 
 USTRUCT(BlueprintType)
 struct FCutData {
@@ -84,6 +86,9 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
+	/*
+		Recursively goes through branches' children and generates mesh using the mesh information stored in each branch
+	*/
 	void GenerateMeshRecursive(ATree* BranchToGenerate);
 
 	void CutTree(FVector CutLocation, UProceduralMeshComponent* ProcMesh, ATree* Tree);
@@ -91,10 +96,16 @@ public:
 
 	void RemoveLeavesRecursive(ATree* Root, ATree* NextTree);
 
-	static FProcMeshInfo CreateMeshData(bool bBuildLeaves, FData NewLogData, FRandomStream NumberStream, FVector LocalOrigin, FVector UpVector);
+	/*
+		Only returns FProcMeshInfo mesh data of a log, given quality and local offset, used for far LOD purposes
+	*/
+	static FProcMeshInfo CreateMeshData(bool bBuildLeaves, FData NewLogData, FRandomStream NumberStream, EChunkQuality RenderQuality, FVector LocalOrigin, FVector UpVector);
+	static FProcMeshInfo CreateLeavesMeshData(FData NewLogData, FRandomStream NumberStream, FVector LocalOrigin, FVector UpVector);
 
+	/*
+		Creates mesh data for this log and applies it to this actor, used for actual gameplay, ie not just for rendering from afar
+	*/
 	void BuildTreeMesh(bool bBuildLeaves);
-	void MakeLeaves();
 public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 		UProceduralMeshComponent* Mesh;
@@ -115,16 +126,22 @@ public:
 		UPaperSprite *Sprite;
 
 	UPROPERTY(BlueprintReadOnly, VisibleAnywhere)
-		int BranchHeight;
-
-	UPROPERTY(BlueprintReadOnly, VisibleAnywhere)
 		bool bPartOfRoot;
 
 	UPROPERTY(BlueprintReadOnly, VisibleAnywhere)
 		ATreeRoot* TreeRoot;
 
 
+private:
+	/*
+		Returns full high quality version of branch
+	*/
+	static FProcMeshInfo GetHighQualityMesh(bool bBuildLeaves, FData NewLogData, FRandomStream NumberStream, FVector LocalOrigin = FVector::ZeroVector, FVector UpVector = FVector::UpVector);
 
+	/*
+		Returns a low quality version of branch, with only two vertex rows (one bottom one top)
+	*/
+	static FProcMeshInfo GetLowQualityMesh(bool bBuildLeaves, FData NewLogData, FRandomStream NumberStream, FVector LocalOrigin = FVector::ZeroVector, FVector UpVector = FVector::UpVector);
 
 
 public:
