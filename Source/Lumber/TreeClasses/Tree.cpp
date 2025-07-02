@@ -18,6 +18,7 @@
 #include "NiagaraComponent.h"
 #include "../LumberGameMode.h"
 #include "TreeRoot.h"
+#include "../Loaders/ChunkLoader.h"
 
 #define GamePriority ENamedThreads::GameThread
 #define BackgroundPriority ENamedThreads::AnyBackgroundHiPriTask

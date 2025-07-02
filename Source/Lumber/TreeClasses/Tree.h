@@ -7,7 +7,7 @@
 #include "Containers/Queue.h"
 #include "ProceduralMeshComponent.h"
 #include "LogData.h"
-#include "../Loaders/Terrain.h"
+#include "../Loaders/Loader.h"
 #include "Tree.generated.h"
 
 class UNiagaraComponent;
@@ -19,7 +19,6 @@ class UStaticMeshComponent;
 class UBoxComponent;
 class ATreeRoot;
 struct FRandomStream;
-enum EChunkQuality;
 
 USTRUCT(BlueprintType)
 struct FCutData {

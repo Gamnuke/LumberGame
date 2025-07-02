@@ -3,15 +3,21 @@
 
 #include "Loader.h"
 
-void ULoader::SetGamemode(ALumberGamemode* NewGamemode)
+ALoader::ALoader()
+{
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = true;
+}
+
+void ALoader::SetGamemode(ALumberGameMode* NewGamemode)
 {
 	Gamemode = NewGamemode;
 }
 
-void ULoader::StartGeneration(int ChunkDataIndex, FVector2D ChunkCoord, EChunkQuality Quality)
+void ALoader::StartGeneration(int ChunkDataIndex, FVector2D ChunkCoord, EChunkQuality Quality)
 {
 }
 
-void ULoader::FinishGeneration(int ChunkDataIndex)
+void ALoader::FinishGeneration(int ChunkDataIndex)
 {
 }

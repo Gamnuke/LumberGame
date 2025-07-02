@@ -8,7 +8,6 @@
 #include "LogData.h"
 #include "ProceduralMeshComponent.h"
 #include "Tree.h"
-#include "../Loaders/Terrain.h"
 #include "../Loaders/TreeLoader.h"
 #include "TreeRoot.generated.h"
 

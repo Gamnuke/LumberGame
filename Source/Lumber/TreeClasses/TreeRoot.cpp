@@ -19,6 +19,7 @@
 #include "NiagaraComponent.h"
 #include "Math/UnrealMathUtility.h"
 #include "LogData.h"
+#include "../Loaders/ChunkLoader.h"
 
 class ULogData;
 #define GamePriority ENamedThreads::GameThread 

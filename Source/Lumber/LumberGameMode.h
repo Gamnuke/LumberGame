@@ -8,9 +8,10 @@
 
 class ATree;
 class ATreeRoot;
-class ATerrain;
-class UTreeLoader;
-class UChunkLoader;
+class ATerrainLoader;
+class ATreeLoader;
+class AChunkLoader;
+class AJobHandler;
 
 UCLASS(minimalapi)
 class ALumberGameMode : public AGameModeBase
@@ -32,7 +33,7 @@ public:
 // Default Variables
 public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	TSubclassOf<ATerrain> TerrainBlueprintClass;
+	TSubclassOf<ATerrainLoader> TerrainBlueprintClass;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	TArray<TSubclassOf<ATree>> TreeClasses;
@@ -54,16 +55,19 @@ public:
 	void PlantTree(FVector LocationToPlant);
 
 private:
-	UTreeLoader* TreeLoader;
-	UChunkLoader* ChunkLoader;
-	ATerrain* Terrain;
+	ATreeLoader* TreeLoader;
+	AChunkLoader* ChunkLoader;
+	ATerrainLoader* TerrainLoader;
+	AJobHandler* JobHandler;
 /*
 	Getter Functions
 */
 public:
-	UTreeLoader* GetTreeLoader();
-	UChunkLoader* GetChunkLoader();
-	ATerrain* GetTerrain();
+	ATreeLoader* GetTreeLoader();
+	AChunkLoader* GetChunkLoader();
+	ATerrainLoader* GetTerrainLoader();
+	AJobHandler* GetJobHandler();
+
 
 };
 

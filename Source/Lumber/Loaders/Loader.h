@@ -3,24 +3,63 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameFramework/Actor.h"
 #include "UObject/NoExportTypes.h"
+#include "../LumberGameMode.h"
 #include "Loader.generated.h"
 
-class ALumberGamemode;
-enum EChunkQuality;
+#define GamePriority ENamedThreads::GameThread 
+#define BackgroundPriority ENamedThreads::AnyBackgroundHiPriTask
+
+UENUM()
+enum EChunkRenderState {
+	NotRendered,
+	Rendering,
+	Rendered
+};
+
+UENUM()
+enum EChunkQuality {
+	Low,
+	Medium,
+	High,
+	Collision
+};
+
+
+USTRUCT()
+struct FChunkRenderData {
+	GENERATED_BODY()
+
+	EChunkRenderState TerrainRenderState = EChunkRenderState::NotRendered;
+	EChunkRenderState TreeRenderState = EChunkRenderState::NotRendered;
+	EChunkRenderState BuildingsRenderState = EChunkRenderState::NotRendered;
+
+	FVector2D ChunkLocation;
+
+	EChunkQuality ChunkQuality;
+
+	int ChunkIndex = -1;
+
+};
+
+class ALumberGameMode;
 /**
  * 
  */
 UCLASS()
-class LUMBER_API ULoader : public UObject
+class LUMBER_API ALoader : public AActor
 {
 	GENERATED_BODY()
 	
 public:
+	ALoader();
+
+public:
 	/*
 		Sets gamemode reference
 	*/
-	void SetGamemode(ALumberGamemode * NewGamemode);
+	void SetGamemode(ALumberGameMode* NewGamemode);
 
 	/*
 		Called by Chunkloader for this loader to start generating stuff at that chunk
@@ -32,6 +71,6 @@ public:
 	*/
 	virtual void FinishGeneration(int ChunkDataIndex);
 
-protected:
-	ALumberGamemode* Gamemode;
+public:
+	ALumberGameMode* Gamemode;
 };

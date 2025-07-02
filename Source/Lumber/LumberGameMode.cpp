@@ -6,10 +6,12 @@
 #include "UObject/ConstructorHelpers.h"
 #include "TreeClasses/Tree.h"
 #include "TreeClasses/TreeRoot.h"
-#include "Loaders/ChunkLoader.h"
 #include "Kismet/GameplayStatics.h"
-#include "Loaders/TreeLoader.h"
+
 #include "Loaders/ChunkLoader.h"
+#include "Loaders/TreeLoader.h"
+#include "Loaders/TerrainLoader.h"
+#include "Loaders/JobHandler.h"
 
 ALumberGameMode::ALumberGameMode()
 	: Super()
@@ -27,21 +29,24 @@ ALumberGameMode::ALumberGameMode()
 }
 
 void ALumberGameMode::BeginPlay() {
-	ChunkLoader = NewObject<UChunkLoader>(this);
-	TreeLoader = NewObject<UTreeLoader>(this);
+
+	// Create loaders
+	ChunkLoader = GetWorld()->SpawnActor<AChunkLoader>();
+	TreeLoader = GetWorld()->SpawnActor<ATreeLoader>();
+	JobHandler = GetWorld()->SpawnActor<AJobHandler>();
+	TerrainLoader = GetWorld()->SpawnActor<ATerrainLoader>(TerrainBlueprintClass, FVector(), FRotator());
+
+	// Setup loaders
+	ChunkLoader->SetGamemode(this);
+	TreeLoader->SetGamemode(this);
+	TerrainLoader->SetGamemode(this);
+	JobHandler->SetGamemode(this);
 
 	ChunkLoader->CreateNewWorld("Epic world");
 	Super::BeginPlay();
 	Points = MakeCircleGrid(25, 2000);
 	iPoint = 0;
 	nextSpawnTime = 8;
-
-	Terrain = GetWorld()->SpawnActor<ATerrain>(TerrainBlueprintClass, FVector(), FRotator());
-
-	Terrain->Gamemode = this;
-	TreeLoader->Gamemode = this;
-
-	//Instance = this;
 }
 
 void ALumberGameMode::Tick(float DeltaSeconds) {
@@ -129,21 +134,26 @@ TArray<FVector> ALumberGameMode::MakeCircleGrid(int HalfDimesion, int GapSize) {
 			}
 		}
 	}
-
+	//reh
 	return newPoints;
 }
 
-UTreeLoader* ALumberGameMode::GetTreeLoader()
+ATreeLoader* ALumberGameMode::GetTreeLoader()
 {
 	return TreeLoader;
 }
 
-UChunkLoader* ALumberGameMode::GetChunkLoader()
+AChunkLoader* ALumberGameMode::GetChunkLoader()
 {
 	return ChunkLoader;
 }
 
-ATerrain* ALumberGameMode::GetTerrain()
+ATerrainLoader* ALumberGameMode::GetTerrainLoader()
 {
-	return Terrain;
+	return TerrainLoader;
+}
+
+AJobHandler* ALumberGameMode::GetJobHandler()
+{
+	return JobHandler;
 }

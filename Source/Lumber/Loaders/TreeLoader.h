@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Loader.h"
 #include "TreeLoader.generated.h"
 
 class ALumberGameMode;
@@ -16,15 +17,12 @@ struct FTreeChunkRenderData {
  * Class that ideally works with the Terrain class to efficiently load Trees, using call back functions to notify end of generation
  */
 UCLASS()
-class LUMBER_API UTreeLoader : public UObject
+class LUMBER_API ATreeLoader : public ALoader
 {
 	GENERATED_BODY()
 
 public:
-	ALumberGameMode* Gamemode;
-
-public:
-	UTreeLoader();
+	ATreeLoader();
 
 	/*
 		Container to hold ongoing tree generation tasks. Outer array resembles each chunk, contaning array of bools.
@@ -44,8 +42,4 @@ public:
 	*/
 	bool TreesInChunkRendered(TArray<bool*> Array);
 
-	/*
-		Returns this treeloader
-	*/
-	static UTreeLoader* GetTreeLoader();
 };
