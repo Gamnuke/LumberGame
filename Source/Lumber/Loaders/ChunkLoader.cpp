@@ -7,11 +7,11 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonSerializerMacros.h"
 
-ChunkLoader::ChunkLoader()
+UChunkLoader::UChunkLoader()
 {
 }
 
-void ChunkLoader::CreateNewWorld(FString WorldName, int Seed)
+void UChunkLoader::CreateNewWorld(FString WorldName, int Seed)
 {
 	if (Seed == 0) {
 		Seed = FMath::Rand();
@@ -43,9 +43,7 @@ void ChunkLoader::CreateNewWorld(FString WorldName, int Seed)
     }
 }
 
-
-
-TSharedPtr<FJsonObject> ChunkLoader::SerializeWorldSettings(FMyWorldSettings WorldData) {
+TSharedPtr<FJsonObject> UChunkLoader::SerializeWorldSettings(FMyWorldSettings WorldData) {
     TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject());
     JsonObject->SetNumberField("Seed", WorldData.Seed);
     JsonObject->SetStringField("WorldName", WorldData.WorldName);
@@ -53,12 +51,12 @@ TSharedPtr<FJsonObject> ChunkLoader::SerializeWorldSettings(FMyWorldSettings Wor
     return JsonObject;
 }
 
-void ChunkLoader::LoadFile(FString FileAddress)
+void UChunkLoader::LoadFile(FString FileAddress)
 {
 	//FFileHelper::LoadFileToArray()
 }
 
-void ChunkLoader::SaveFile(FString FileAddress)
+void UChunkLoader::SaveFile(FString FileAddress)
 {
 	//FFileHelper::LoadFileToArray()
 }

@@ -26,3 +26,24 @@ Problem with this is its hard to modularise the generation process, eg if we wan
 since everything is dependent on the last step.
 
 We are going to move to a different generation method, where we first generate the data in the TreeRoot actor, then from there it will generate the rest of the logs using that data
+
+TreeRoot will generate an array of LogData classes, which will contain the data for each log, containing its parent class.
+
+01/07/2025
+We want to be able to have different LOD levels for trees and combine the generation with the terrain generation to enable fully functional chunkloading with other aspects of
+that chunk, eg trees, buildsing, etc
+
+Loading Chunk:
+	LoadChunk initiates steps to load parts of a chunk, like terrain, trees, etc.
+	Each step will call a callback function to indicate that part of generation has completed.
+	This callback function, called for example "OnFinishedGeneration" will tick the render state variable for that procedure, always checking the state of other renders.
+	Once all states, eg: TreeRenderState, TerrainRenderState and BuildingRenderState are all "Rendered", tick the final ChunkRenderState to "Rendered".
+
+	Problem: Spawning tree root actors cause a lot of lag since it needs to be done on the game thread.
+
+Chunk loading workflow:
+	-eg: Chunk 1 needs loading
+	- Chunk gets split into parts, eg: Loading trees, loading buildings, loading terrain
+	- Each part has a class Loader assigned to it, eg: TreeLoader, TerrainLoader, BuildingLoader, FUTURE: Could have Loader class
+	- These classes need to be able to have a function to be called to make it start generating, and a function that gets called once its part is done.
+	

@@ -7,7 +7,6 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "Engine/Engine.h"
 #include "DrawDebugHelpers.h"
-#include "TreeMesh.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/BoxComponent.h"
 #include "PaperSpriteComponent.h"
@@ -17,8 +16,8 @@
 #include "Math/RandomStream.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraComponent.h"
-#include "LumberGameMode.h"
-#include "TreeClasses/TreeRoot.h"
+#include "../LumberGameMode.h"
+#include "TreeRoot.h"
 
 #define GamePriority ENamedThreads::GameThread
 #define BackgroundPriority ENamedThreads::AnyBackgroundHiPriTask

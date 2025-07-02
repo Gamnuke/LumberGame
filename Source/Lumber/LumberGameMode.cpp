@@ -4,9 +4,12 @@
 #include "LumberHUD.h"
 #include "LumberCharacter.h"
 #include "UObject/ConstructorHelpers.h"
-#include "Tree.h"
+#include "TreeClasses/Tree.h"
 #include "TreeClasses/TreeRoot.h"
-#include "ChunkHandler/ChunkLoader.h"
+#include "Loaders/ChunkLoader.h"
+#include "Kismet/GameplayStatics.h"
+#include "Loaders/TreeLoader.h"
+#include "Loaders/ChunkLoader.h"
 
 ALumberGameMode::ALumberGameMode()
 	: Super()
@@ -19,23 +22,35 @@ ALumberGameMode::ALumberGameMode()
 
 	// use our custom HUD class
 	HUDClass = ALumberHUD::StaticClass();
+
+	
 }
 
 void ALumberGameMode::BeginPlay() {
-	ChunkLoader::CreateNewWorld("Epic world");
+	ChunkLoader = NewObject<UChunkLoader>(this);
+	TreeLoader = NewObject<UTreeLoader>(this);
+
+	ChunkLoader->CreateNewWorld("Epic world");
 	Super::BeginPlay();
 	Points = MakeCircleGrid(25, 2000);
 	iPoint = 0;
 	nextSpawnTime = 8;
+
+	Terrain = GetWorld()->SpawnActor<ATerrain>(TerrainBlueprintClass, FVector(), FRotator());
+
+	Terrain->Gamemode = this;
+	TreeLoader->Gamemode = this;
+
+	//Instance = this;
 }
 
 void ALumberGameMode::Tick(float DeltaSeconds) {
 	Super::Tick(DeltaSeconds);
 	CurrentTime += DeltaSeconds;
-	if (CurrentTime > nextSpawnTime && nextSpawnTime != -1) {
+	/*if (CurrentTime > nextSpawnTime && nextSpawnTime != -1) {
 		nextSpawnTime = -1;
 		StartPlanting();
-	}
+	}*/
 
 	/*if (CurrentTime >= nextSpawnTime && nextSpawnTime != -1)
 	{
@@ -77,11 +92,11 @@ void ALumberGameMode::StartPlanting() {
 		}
 	}
 
-	AsyncTask(ENamedThreads::GameThread, [this, NewTrees]() {
+	/*AsyncTask(ENamedThreads::GameThread, [this, NewTrees]() {
 		for (ATreeRoot* NewTree : NewTrees) {
 			NewTree->GenerateTree(EChunkQuality::Low);
 		}
-	});
+	});*/
 }
 
 
@@ -89,12 +104,12 @@ void ALumberGameMode::PlantTree(FVector LocationToPlant) {
 	FHitResult Hit;
 	GetWorld()->LineTraceSingleByChannel(Hit, LocationToPlant + FVector(0, 0, 1000000), LocationToPlant - FVector(0, 0, 1000000), ECollisionChannel::ECC_WorldStatic);
 
-	if (Hit.bBlockingHit) {
+	/*if (Hit.bBlockingHit) {
 		ATreeRoot* NewTree = GetWorld()->SpawnActor<ATreeRoot>(TreeRootBlueprintClass, Hit.ImpactPoint, FRotator());
 		NewTree->TreeSeed = FMath::Rand();
 		NewTree->TreeClass = TreeClasses[0];
 		NewTree->GenerateTree(EChunkQuality::Low);
-	}
+	}*/
 }
 
 TArray<FVector> ALumberGameMode::MakeCircleGrid(int HalfDimesion, int GapSize) {
@@ -116,4 +131,19 @@ TArray<FVector> ALumberGameMode::MakeCircleGrid(int HalfDimesion, int GapSize) {
 	}
 
 	return newPoints;
+}
+
+UTreeLoader* ALumberGameMode::GetTreeLoader()
+{
+	return TreeLoader;
+}
+
+UChunkLoader* ALumberGameMode::GetChunkLoader()
+{
+	return ChunkLoader;
+}
+
+ATerrain* ALumberGameMode::GetTerrain()
+{
+	return Terrain;
 }

@@ -3,7 +3,7 @@
 
 #include "Terrain.h"
 #include "KismetProceduralMeshLibrary.h"
-
+#include "TreeLoader.h"
 
 #define GamePriority ENamedThreads::GameThread 
 #define BackgroundPriority ENamedThreads::AnyBackgroundHiPriTask
@@ -73,7 +73,7 @@ void ATerrain::RenderChunks(FVector2D From) {
 		// Delete chunks that are outside render distance that are not still rendering
 		for (int i = 0; i < Chunks.Num(); i++)
 		{
-			if (ChunkValid(i) && Chunks[i].RenderState == EChunkRenderState::Rendered && (From - Chunks[i].ChunkLocation).Length() > (ChunkRenderDistance + ChunkDeletionOffset) * totalChunkSize * sqrt(2)) {
+			if (ChunkValid(i) && Chunks[i].TerrainRenderState == EChunkRenderState::Rendered && (From - Chunks[i].ChunkLocation).Length() > (ChunkRenderDistance + ChunkDeletionOffset) * totalChunkSize * sqrt(2)) {
 				DeleteChunkAtIndex(i);
 			}
 		}
@@ -93,7 +93,7 @@ void ATerrain::RenderChunks(FVector2D From) {
 				}
 			}
 			else {
-				LoadChunk(ChunkToCheck);
+				QueueChunkLoad(ChunkToCheck);
 			}
 
 			//// Get LOD of what this chunk should be
@@ -128,19 +128,74 @@ void ATerrain::RenderChunks(FVector2D From) {
 }
 
 /*
-Loads a chunk if not already loaded, with all other data like trees
+* Allocates new chunk index, then sets it to rendering state, then queues a task to load the chunk.
+* Initiates chunk load procedure if chunk is not already loaded, loading everything including terrain and other data like trees
 */
-void ATerrain::LoadChunk(FVector2D ChunkLocation) {
+void ATerrain::QueueChunkLoad(FVector2D ChunkLocation) {
 
 	// Chunk is already loaded, so don't do anything
 	if (GetChunk(ChunkLocation) != -1) { return; }
 
 	EChunkQuality NewChunkQuality = GetTargetLODForChunk(ChunkLocation);
 	int NewChunkIndex = FindOrCreateChunkData(ChunkLocation, NewChunkQuality);
-	Chunks[NewChunkIndex].RenderState = EChunkRenderState::Rendering;
+	Chunks[NewChunkIndex].TerrainRenderState = EChunkRenderState::Rendering;
 	Chunks[NewChunkIndex].ChunkQuality = NewChunkQuality;
 
-	AddJob([this, NewChunkIndex]() {RenderChunkTerrain(NewChunkIndex); });
+	AddJob([this, NewChunkIndex]() {LoadChunk(NewChunkIndex); });
+}
+
+/*
+Renders a single chunk given the index of the already created chunk data in the chunks array
+*/
+void ATerrain::LoadChunk(int ChunkDataIndex) {
+
+	// Extract variables from ChunkData for easy access
+	EChunkQuality ChunkTargetQuality = Chunks[ChunkDataIndex].ChunkQuality;
+	FVector2D ChunkCoord = Chunks[ChunkDataIndex].ChunkLocation;
+
+	// Here's where we would load other data, like terrain, generating trees, buildings, etc.
+
+	// Start loading terrain for this chunk
+	LoadChunkTerrain(ChunkDataIndex, ChunkTargetQuality, ChunkCoord);
+
+	// Start loading trees for this chunk
+	LoadChunkTrees(ChunkDataIndex, ChunkTargetQuality, ChunkCoord);
+
+	// Set material on the game thread and set thte chunk data to be set as rendered
+	AsyncTask(GamePriority, [this, ChunkDataIndex]() {
+		Mesh->SetMaterial(ChunkDataIndex, TerrainMaterial);
+		Chunks[ChunkDataIndex].TerrainRenderState = EChunkRenderState::Rendered;
+	});
+}
+
+void ATerrain::LoadChunkTerrain(int ChunkDataIndex, EChunkQuality ChunkTargetQuality, FVector2D ChunkCoord) {
+
+	// Create mesh data and optional collision data
+	FMeshData NewMeshData;
+	FMeshData NewMeshCollisionData;
+	GetChunkRenderData(&NewMeshData, ChunkCoord, ChunkTargetQuality);
+	if (ChunkTargetQuality == EChunkQuality::High) {
+		GetChunkRenderData(&NewMeshCollisionData, ChunkCoord, EChunkQuality::Collision);
+	}
+
+	// Create mesh section for the mesh and collision mesh
+	CreateMeshSection(Mesh, ChunkDataIndex, NewMeshData.Vertices, NewMeshData.Triangles, NewMeshData.Normals, NewMeshData.UVs, NewMeshData.Colors, NewMeshData.Tangents, false);
+	if (ChunkTargetQuality == EChunkQuality::High) {
+		CreateMeshSection(CollisionMesh, ChunkDataIndex, NewMeshCollisionData.Vertices, NewMeshCollisionData.Triangles, NewMeshCollisionData.Normals, NewMeshCollisionData.UVs, NewMeshCollisionData.Colors, NewMeshCollisionData.Tangents, true);
+	}
+}
+
+void ATerrain::LoadChunkTrees(int ChunkDataIndex, EChunkQuality ChunkTargetQuality, FVector2D ChunkCoord) {
+	Gamemode->GetTreeLoader()->GenerateTrees(ChunkDataIndex, ChunkCoord);
+}
+
+void ATerrain::LoadChunkBuildings() {
+
+}
+
+void ATerrain::OnFinishLoadedChunkTrees(int ChunkDataIndex)
+{
+
 }
 
 /*
@@ -149,7 +204,7 @@ Deletes and reloades chunk
 void ATerrain::ReloadChunk(FVector2D ChunkLocation) {
 	int ChunkIndex = GetChunk(ChunkLocation);
 	if (ChunkIndex == -1) {
-		LoadChunk(ChunkLocation); 
+		QueueChunkLoad(ChunkLocation); 
 		return;
 	}
 
@@ -159,10 +214,10 @@ void ATerrain::ReloadChunk(FVector2D ChunkLocation) {
 void ATerrain::ReloadChunk(int ChunkIndex) {
 	if(ChunkValid(ChunkIndex)){
 		EChunkQuality NewChunkQuality = GetTargetLODForChunk(Chunks[ChunkIndex].ChunkLocation);
-		Chunks[ChunkIndex].RenderState = EChunkRenderState::Rendering;
+		Chunks[ChunkIndex].TerrainRenderState = EChunkRenderState::Rendering;
 		Chunks[ChunkIndex].ChunkQuality = NewChunkQuality;
 
-		AddJob([this, ChunkIndex]() {RenderChunkTerrain(ChunkIndex); });
+		AddJob([this, ChunkIndex]() {LoadChunk(ChunkIndex); });
 	}
 }
 
@@ -175,7 +230,7 @@ bool ATerrain::CheckChunkForReloading(int ChunkIndex) {
 	if (ChunkIndex == -1) { return false; }
 
 	// Check if chunk isn't rendering
-	if (Chunks[ChunkIndex].RenderState == EChunkRenderState::Rendering) { return false; }
+	if (Chunks[ChunkIndex].TerrainRenderState == EChunkRenderState::Rendering) { return false; }
 
 	// Check if chunk has the same LOD
 	if (Chunks[ChunkIndex].ChunkQuality == GetTargetLODForChunk(Chunks[ChunkIndex].ChunkLocation)) { return false; }
@@ -274,35 +329,7 @@ void ATerrain::DeleteChunkAtIndex(int ChunkIndex) {
 	}
 }
 
-/*
-Renders a single chunk given the index of the already created chunk data in the chunks array
-*/
-void ATerrain::RenderChunkTerrain(int ChunkDataIndex) {
 
-	// Extract variables from ChunkData for easy access
-	EChunkQuality ChunkTargetQuality = Chunks[ChunkDataIndex].ChunkQuality;
-	FVector2D ChunkCoord = Chunks[ChunkDataIndex].ChunkLocation;
-
-	// Create mesh data and optional collision data
-	FMeshData NewMeshData;
-	FMeshData NewMeshCollisionData;
-	GetChunkRenderData(&NewMeshData, ChunkCoord, ChunkTargetQuality);
-	if (ChunkTargetQuality == EChunkQuality::High) {
-		GetChunkRenderData(&NewMeshCollisionData, ChunkCoord, EChunkQuality::Collision);
-	}
-
-	// Create mesh section for the mesh and collision mesh
-	CreateMeshSection(Mesh, ChunkDataIndex, NewMeshData.Vertices, NewMeshData.Triangles, NewMeshData.Normals, NewMeshData.UVs, NewMeshData.Colors, NewMeshData.Tangents, false);
-	if (ChunkTargetQuality == EChunkQuality::High) {
-		CreateMeshSection(CollisionMesh, ChunkDataIndex, NewMeshCollisionData.Vertices, NewMeshCollisionData.Triangles, NewMeshCollisionData.Normals, NewMeshCollisionData.UVs, NewMeshCollisionData.Colors, NewMeshCollisionData.Tangents, true);
-	}
-	
-	// Set material on the game thread and set thte chunk data to be set as rendered
-	AsyncTask(GamePriority, [this, ChunkDataIndex]() {
-		Mesh->SetMaterial(ChunkDataIndex, TerrainMaterial);
-		Chunks[ChunkDataIndex].RenderState = EChunkRenderState::Rendered;
-	});
-}
 
 /*
 Returns value from a perlin noise function, using a seed for point offset
@@ -531,7 +558,7 @@ int ATerrain::DesignateChunkIndex(FVector2D ChunkLocation, EChunkQuality ChunkQu
 
 	// Add chunk data to array
 	NewChunkData.ChunkLocation = ChunkLocation;
-	NewChunkData.RenderState = EChunkRenderState::NotRendered;
+	NewChunkData.TerrainRenderState = EChunkRenderState::NotRendered;
 	NewChunkData.ChunkQuality = ChunkQuality;
 	int DesignatedIndex = AddNewChunkData(NewChunkData);
 	Chunks[DesignatedIndex].ChunkIndex = DesignatedIndex;

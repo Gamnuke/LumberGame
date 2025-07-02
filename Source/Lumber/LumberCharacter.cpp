@@ -9,7 +9,7 @@
 #include "GameFramework/InputSettings.h"
 #include "Kismet/GameplayStatics.h"
 #include "MotionControllerComponent.h"
-#include "Tree.h"
+#include "TreeClasses/Tree.h"
 #include "Engine/Engine.h"
 #include "DrawDebugHelpers.h"
 

@@ -6,13 +6,12 @@
 #include "GameFramework/Actor.h"
 #include "Containers/Queue.h"
 #include "ProceduralMeshComponent.h"
-#include "TreeClasses/LogData.h"
-#include "TerrainClasses/Terrain.h"
+#include "LogData.h"
+#include "../Loaders/Terrain.h"
 #include "Tree.generated.h"
 
 class UNiagaraComponent;
 class UProceduralMeshComponent;
-class UTreeMesh;
 class UPaperSprite;
 class USceneComponent;
 class UCapsuleComponent;

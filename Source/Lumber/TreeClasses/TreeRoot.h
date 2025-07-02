@@ -7,8 +7,9 @@
 #include "../Serialization/SerializableObject.h"
 #include "LogData.h"
 #include "ProceduralMeshComponent.h"
-#include "../Tree.h"
-#include "../TerrainClasses/Terrain.h"
+#include "Tree.h"
+#include "../Loaders/Terrain.h"
+#include "../Loaders/TreeLoader.h"
 #include "TreeRoot.generated.h"
 
 class ATree;
@@ -29,6 +30,7 @@ protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
 
+
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
@@ -41,7 +43,7 @@ public:
 	/*
 		Generates tree with given quality if not already generated
 	*/
-	void GenerateTree(EChunkQuality TreeQuality);
+	void GenerateTree(EChunkQuality TreeQuality, FTreeChunkRenderData* NewAssignedTreeLoaderChunk, bool* NewAssignedTreeLoaderTree);
 
 	/*
 		Initiates the recursive call of BuildTreeData() and returns a LogData array
@@ -82,8 +84,6 @@ private:
 	TArray<ULogData*> GetTreeLogData();
 
 public:	
-
-
 	ATree* Root;
 
 	int TreeSeed;
@@ -118,6 +118,10 @@ public:
 	// Custom Range functions that simply shortens references to the original RandRange function
 	static int RandRange(int Min, int Max, FRandomStream& Stream);
 	static float FRandRange(float Min, float Max, FRandomStream& Stream);
+
+public:
+	FTreeChunkRenderData* AssignedTreeLoaderChunk;
+	bool* AssignedTreeLoaderTree;
 
 };
 

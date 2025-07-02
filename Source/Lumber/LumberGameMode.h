@@ -8,6 +8,9 @@
 
 class ATree;
 class ATreeRoot;
+class ATerrain;
+class UTreeLoader;
+class UChunkLoader;
 
 UCLASS(minimalapi)
 class ALumberGameMode : public AGameModeBase
@@ -25,8 +28,12 @@ public:
 
 	bool Started = false;
 	float CurrentTime = 0;
+
 // Default Variables
 public:
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	TSubclassOf<ATerrain> TerrainBlueprintClass;
+
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	TArray<TSubclassOf<ATree>> TreeClasses;
 
@@ -45,7 +52,19 @@ public:
 public:
 	TArray<FVector> MakeCircleGrid(int HalfDimesion, int GapSize);
 	void PlantTree(FVector LocationToPlant);
-	
+
+private:
+	UTreeLoader* TreeLoader;
+	UChunkLoader* ChunkLoader;
+	ATerrain* Terrain;
+/*
+	Getter Functions
+*/
+public:
+	UTreeLoader* GetTreeLoader();
+	UChunkLoader* GetChunkLoader();
+	ATerrain* GetTerrain();
+
 };
 
 

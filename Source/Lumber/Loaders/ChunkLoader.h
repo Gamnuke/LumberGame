@@ -3,15 +3,17 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MyWorld.h"
-//#include "ChunkLoader.generated.h"
+#include "../Serialization/MyWorld.h"
+#include "ChunkLoader.generated.h"
 
 
-
-class LUMBER_API ChunkLoader
+UCLASS()
+class LUMBER_API UChunkLoader : public UObject
 {
+GENERATED_BODY()
+
 public:
-	ChunkLoader();
+	UChunkLoader();
 
 	void static CreateNewWorld(FString WorldName, int Seed = 0);
 

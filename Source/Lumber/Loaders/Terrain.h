@@ -4,12 +4,15 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "../LumberGameMode.h"
 #include "ProceduralMeshComponent.h"
 #include "Terrain.generated.h"
 
 #define MAX_CHUNKS 5000
 
 class UProceduralMeshComponent;
+class UTreeLoader;
+class ALumberGameMode;
 
 UENUM()
 enum EChunkRenderState {
@@ -31,8 +34,11 @@ USTRUCT()
 struct FChunkRenderData {
 	GENERATED_BODY()
 	
-	EChunkRenderState RenderState = EChunkRenderState::NotRendered;
-	
+	EChunkRenderState TerrainRenderState = EChunkRenderState::NotRendered;
+	EChunkRenderState TreeRenderState = EChunkRenderState::NotRendered;
+	EChunkRenderState BuildingsRenderState = EChunkRenderState::NotRendered;
+
+
 	FVector2D ChunkLocation;
 
 	EChunkQuality ChunkQuality;
@@ -70,7 +76,6 @@ UCLASS()
 class LUMBER_API ATerrain : public AActor
 {
 	GENERATED_BODY()
-	
 
 protected:
 	// Called when the game starts or when spawned
@@ -78,7 +83,6 @@ protected:
 
 	void GenerateMesh(TArray<FVector> Vertices, TArray<int> Triangles, TArray<FVector> Normals, TArray<FVector2D> UVs, TArray<FProcMeshTangent> Tangents, TArray<FColor> Colors);
 
-	float GetTerrainPointData(FVector2D Point);
 
 	int ExtractRandomNumber(int* i_Seed);
 
@@ -95,7 +99,7 @@ public:
 
 	void RenderChunks(FVector2D From);
 
-	void LoadChunk(FVector2D ChunkLocation);
+	void QueueChunkLoad(FVector2D ChunkLocation);
 
 	void ReloadChunk(FVector2D ChunkLocation);
 
@@ -119,7 +123,8 @@ public:
 
 	void DeleteChunkAtIndex(int ChunkIndex);
 
-	void RenderChunkTerrain(int ChunkDataIndex);
+	void LoadChunk(int ChunkDataIndex);
+
 
 	void GetNearestChunks(TArray<FVector2D>* NearestChunks);
 
@@ -145,12 +150,16 @@ public:
 
 	bool ChunkValid(int ChunkIndex);
 
+	float GetTerrainPointData(FVector2D Point);
+
 public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	UProceduralMeshComponent* Mesh;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	UProceduralMeshComponent* CollisionMesh;
+
+	ALumberGameMode* Gamemode;
 
 public:
 	// Length and width of each chunk, must be odd and greater than 3
@@ -222,4 +231,16 @@ public:
 
 	float NextChunkDeletionCheck = 2;
 
+private:
+	void LoadChunkTerrain(int ChunkDataIndex, EChunkQuality ChunkTargetQuality, FVector2D ChunkCoord);
+
+	void LoadChunkTrees(int ChunkDataIndex, EChunkQuality ChunkTargetQuality, FVector2D ChunkCoord);
+
+	void LoadChunkBuildings();
+
+public:
+	/*
+		Called by TreeLoader once a chunk has finished generating its trees
+	*/
+	void OnFinishLoadedChunkTrees(int ChunkDataIndex);
 };

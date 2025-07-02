@@ -2,7 +2,7 @@
 
 
 #include "TreeRoot.h"
-#include "../Tree.h"
+#include "Tree.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "KismetProceduralMeshLibrary.h"
 #include "Kismet/KismetMathLibrary.h"
@@ -63,7 +63,9 @@ void ATreeRoot::BeginPlay()
 /*
 Main function called to generate tree
 */
-void ATreeRoot::GenerateTree(EChunkQuality TreeQuality) {
+void ATreeRoot::GenerateTree(EChunkQuality TreeQuality, FTreeChunkRenderData* NewAssignedTreeLoaderChunk, bool* NewAssignedTreeLoaderTree) {
+	AssignedTreeLoaderChunk = NewAssignedTreeLoaderChunk;
+	AssignedTreeLoaderTree = NewAssignedTreeLoaderTree;
 
 	// Sets up stream with given seed
 	NumberStream = FRandomStream(TreeSeed);
@@ -105,6 +107,7 @@ void ATreeRoot::GenerateTree(EChunkQuality TreeQuality) {
 					false
 				);
 				MaskMesh->SetMaterial(1, InitialTreeData.LeafMaterial);
+
 
 			});
 		});
