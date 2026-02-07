@@ -5,9 +5,10 @@
 #include "CoreMinimal.h"
 #include "Loader.h"
 #include "ProceduralMeshComponent.h"
+#include "../Serialization/MyWorld.h"
 #include "TerrainLoader.generated.h"
 
-
+struct FMyWorldSettings;
 
 USTRUCT()
 struct FMeshData {
@@ -53,6 +54,8 @@ public:
 	FRandomStream Stream;
 
 	TArray<int> SeedArray;
+
+	FMyWorldSettings LoadedWorldSettings;
 
 protected:
 	// Called when the game starts or when spawned

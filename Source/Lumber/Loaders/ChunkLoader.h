@@ -72,11 +72,15 @@ private:
 	// Stores chunks as pairs of their location (for unrendering) and their index, which correspond to the ProceduralMeshComponent's Mesh Section Index
 	TArray<FChunkRenderData> Chunks;
 
+	//Debug switches to turn on or off features
+	bool bDebugGenerateTrees = false;
+	bool bDebugGenerateTerrain = true;
 
 public:
 
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
+
 	virtual void BeginPlay();
 
 	void RenderChunks(FVector2D From);
@@ -129,6 +133,7 @@ public:
 
 	float NextChunkDeletionCheck = 2;
 
+	UMyWorld *LoadedWorld;
 private:
 
 	void LoadChunkTrees(int ChunkDataIndex, EChunkQuality ChunkTargetQuality, FVector2D ChunkCoord);
@@ -144,9 +149,7 @@ public:
 public:
 	AChunkLoader();
 
-	void static CreateNewWorld(FString WorldName, int Seed = 0);
-
-	TSharedPtr<FJsonObject> static SerializeWorldSettings(FMyWorldSettings WorldData);
+	TSharedPtr<FJsonObject> static SerializeWorldSettings(FMyWorldData WorldData);
 
 public:
 	void LoadFile(FString FileAddress);

@@ -23,6 +23,6 @@ class LUMBER_API ISerializableObject
 	// Add interface functions to this class. This is the class that will be inherited to implement this interface.
 public:
 
-	virtual FJsonObject SerializeObject();
-	virtual void DeserializeAndLoadObject(FJsonObject ObjectData);
+	virtual TSharedPtr<FJsonObject> SerializeObject();
+	virtual void DeserializeAndLoadObject(TSharedPtr<FJsonObject> ObjectData);
 };

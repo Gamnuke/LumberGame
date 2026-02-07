@@ -45,12 +45,12 @@ void ATreeRoot::Tick(float DeltaTime)
 
 }
 
-FJsonObject ATreeRoot::SerializeObject()
+TSharedPtr<FJsonObject> ATreeRoot::SerializeObject()
 {
-	return FJsonObject();
+	return TSharedPtr<FJsonObject>();
 }
 
-void ATreeRoot::DeserializeAndLoadObject(FJsonObject ObjectData)
+void ATreeRoot::DeserializeAndLoadObject(TSharedPtr<FJsonObject> ObjectData)
 {
 }
 

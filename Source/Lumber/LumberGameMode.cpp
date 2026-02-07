@@ -13,6 +13,8 @@
 #include "Loaders/TerrainLoader.h"
 #include "Loaders/JobHandler.h"
 
+#include "Serialization/MyWorld.h"
+
 ALumberGameMode::ALumberGameMode()
 	: Super()
 {
@@ -42,7 +44,10 @@ void ALumberGameMode::BeginPlay() {
 	TerrainLoader->SetGamemode(this);
 	JobHandler->SetGamemode(this);
 
-	ChunkLoader->CreateNewWorld("Epic world");
+	// Create new world
+	UMyWorld* NewWorld = UMyWorld::CreateNewWorld(this, WorldToLoad);
+	TerrainLoader->LoadedWorldSettings = NewWorld->WorldSettings;
+
 	Super::BeginPlay();
 	Points = MakeCircleGrid(25, 2000);
 	iPoint = 0;

@@ -5,11 +5,11 @@
 
 // Add default functionality here for any ISerializableObject functions that are not pure virtual.
 
-FJsonObject ISerializableObject::SerializeObject()
+TSharedPtr<FJsonObject> ISerializableObject::SerializeObject()
 {
-	return FJsonObject();
+	return TSharedPtr<FJsonObject>();
 }
 
-void ISerializableObject::DeserializeAndLoadObject(FJsonObject ObjectData)
+void ISerializableObject::DeserializeAndLoadObject(TSharedPtr<FJsonObject> ObjectData)
 {
 }

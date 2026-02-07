@@ -57,38 +57,6 @@ void AChunkLoader::Tick(float DeltaTime)
     }
 }
 
-void AChunkLoader::CreateNewWorld(FString WorldName, int Seed)
-{
-	if (Seed == 0) {
-		Seed = FMath::Rand();
-	}
-
-    FMyWorldSettings newWorldSettings;
-	newWorldSettings.Seed = Seed;
-    newWorldSettings.WorldName = WorldName;
-
-    // Create the JSON object
-    TSharedPtr<FJsonObject> JsonObject = SerializeWorldSettings(newWorldSettings);
-
-    // Convert the JSON object to a string
-    FString OutputString;
-    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
-    FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer);
-
-    // Define the file path (in this case, under the project's Saved directory)
-    FString FilePath = FPaths::ProjectDir() + "/Saved/" + WorldName + "/WorldSettings.json";
-
-    // Save the string to a file
-    if (FFileHelper::SaveStringToFile(OutputString, *FilePath))
-    {
-        UE_LOG(LogTemp, Warning, TEXT("JSON saved successfully to %s"), *FilePath);
-    }
-    else
-    {
-        UE_LOG(LogTemp, Error, TEXT("Failed to save JSON to file."));
-    }
-}
-
 /*
 Renders chunks around a given point on a seperate thread, based on render distance and set LOD distances.
 Algorithm renders chunks in a grid, not from the point of the player
@@ -185,10 +153,14 @@ void AChunkLoader::LoadChunk(int ChunkDataIndex) {
 	// Here's where we would load other data, like terrain, generating trees, buildings, etc.
 
 	// Start loading terrain for this chunk
-	Gamemode->GetTerrainLoader()->LoadChunkTerrain(ChunkDataIndex, ChunkTargetQuality, ChunkCoord);
+	if (bDebugGenerateTerrain) {
+		Gamemode->GetTerrainLoader()->LoadChunkTerrain(ChunkDataIndex, ChunkTargetQuality, ChunkCoord);
+	}
 
 	// Start loading trees for this chunk
-	Gamemode->GetTreeLoader()->GenerateTrees(ChunkDataIndex, ChunkCoord);
+	if (bDebugGenerateTrees) {
+		Gamemode->GetTreeLoader()->GenerateTrees(ChunkDataIndex, ChunkCoord);
+	}
 
 	// Set material on the game thread and set thte chunk data to be set as rendered
 	AsyncTask(GamePriority, [this, ChunkDataIndex]() {
@@ -472,9 +444,7 @@ void AChunkLoader::GetChunkSizesFromQuality(EChunkQuality Quality, int *NewChunk
 }
 
 
-
-
-TSharedPtr<FJsonObject> AChunkLoader::SerializeWorldSettings(FMyWorldSettings WorldData) {
+TSharedPtr<FJsonObject> AChunkLoader::SerializeWorldSettings(FMyWorldData WorldData) {
     TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject());
     JsonObject->SetNumberField("Seed", WorldData.Seed);
     JsonObject->SetStringField("WorldName", WorldData.WorldName);

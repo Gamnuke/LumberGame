@@ -28,7 +28,7 @@ void ATerrainLoader::BeginPlay()
 	Mesh->bUseAsyncCooking = true;
 	CollisionMesh->bUseAsyncCooking = true;
 
-
+	
 	// Set random seed for stream
 	Stream.GenerateNewSeed();
 	for (int i = 0; i < 1000; i++)
@@ -55,32 +55,65 @@ void ATerrainLoader::LoadChunkTerrain(int ChunkDataIndex, EChunkQuality ChunkTar
 }
 
 /*
-Returns data for a point using a seed and lookup table
+Returns data for a point using a seed
 */
 float ATerrainLoader::GetTerrainPointData(FVector2D Point) {
 	int i_Seed = 0;
 	float ResultZ = 0;
 
-	// Bumps
-	ResultZ += GetNoiseValueAtPoint(Point, 0.001, &i_Seed) * GetNoiseValueAtPoint(Point, 0.00001, &i_Seed) * 50;
-	ResultZ += GetNoiseValueAtPoint(Point, 0.00001, &i_Seed) * 5000;
-	ResultZ += GetNoiseValueAtPoint(Point, 0.0000005, &i_Seed) * 50000;
-	ResultZ += GetNoiseValueAtPoint(Point, 0.0000005, &i_Seed) * 50000;
+	for (const FNoiseLayer Layer : LoadedWorldSettings.MountainLayer) {
 
-	// Mountains
-	ResultZ += GetNoiseValueAtPoint(Point, 0.00005, &i_Seed) * 50000 * GetNoiseValueAtPoint(Point, 0.000004, &i_Seed);
+		// Stretch or translate point for the perlin noise function
+		FVector2D ProcessedPoint = Point;
+		ProcessedPoint.X = ProcessedPoint.X * Layer.XScale;
+		ProcessedPoint.Y = ProcessedPoint.Y * Layer.YScale;
+		ProcessedPoint.X += Layer.XOffset;
+		ProcessedPoint.Y += Layer.YOffset;
 
-	// Rivers
-	ResultZ += FMath::Abs(GetNoiseValueAtPoint(Point, 0.000004, &i_Seed)) * 100000;
+		// Amplify the point
+		float NewResultZ = FMath::PerlinNoise2D(ProcessedPoint);
+		NewResultZ = NewResultZ * Layer.Gain;
 
-	// Mountain peaks
-	ResultZ += FMath::Abs(GetNoiseValueAtPoint(Point, 0.000004, &i_Seed)) * -60000;
+		// Operation to the resulting Z point
+		switch (Layer.OperationType.GetValue())
+		{	
+		case Additive:
+			ResultZ += NewResultZ;
+			break;
+		case Multiplicative:
+			ResultZ = ResultZ * NewResultZ;
+			break;
+		default:
+			break;
+		}
+	}
+
+
+
+	//// Bumps
+	//ResultZ += GetNoiseValueAtPoint(Point, 0.001, &i_Seed) * GetNoiseValueAtPoint(Point, 0.00001, &i_Seed) * 50;
+	//ResultZ += GetNoiseValueAtPoint(Point, 0.00001, &i_Seed) * 5000;
+	//ResultZ += GetNoiseValueAtPoint(Point, 0.0000005, &i_Seed) * 50000;
+	//ResultZ += GetNoiseValueAtPoint(Point, 0.0000005, &i_Seed) * 50000;
+
+	//// Mountains
+	//ResultZ += GetNoiseValueAtPoint(Point, 0.00005, &i_Seed) * 50000 * GetNoiseValueAtPoint(Point, 0.000004, &i_Seed);
+
+	//// Rivers
+	//ResultZ += FMath::Abs(GetNoiseValueAtPoint(Point, 0.000004, &i_Seed)) * 100000;
+
+	//// Mountain peaks
+	//ResultZ += FMath::Abs(GetNoiseValueAtPoint(Point, 0.000004, &i_Seed)) * -60000;
 
 
 	//ResultZ += GetNoiseValueAtPoint(Point, 0.0000005, &i_Seed) * 1000000;
 	//ResetLookupTable();
 	return ResultZ;
 }
+
+/*
+	We want to, for each point, use the perlin noise function multiple times according to the terrain settings
+*/
 
 /*
 Returns value from a perlin noise function, using a seed for point offset
@@ -228,9 +261,9 @@ void ATerrainLoader::CreateMeshSection(UProceduralMeshComponent* ProcMesh, int32
 	check(CopyIndexIdx == NewSection.ProcIndexBuffer.Num());
 
 	NewSection.bEnableCollision = bCreateCollision;
-
 	AsyncTask(GamePriority, [this, ProcMesh, SectionIndex, NewSection]() {
 		ProcMesh->SetProcMeshSection(SectionIndex, NewSection);
+		ProcMesh->SetMaterial(SectionIndex, Gamemode->TerrainMaterial);
 	});
 }
 

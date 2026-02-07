@@ -102,8 +102,8 @@ public:
 
 
 public:
-	FJsonObject SerializeObject() override;
-	void DeserializeAndLoadObject(FJsonObject ObjectData) override;
+	TSharedPtr<FJsonObject> SerializeObject() override;
+	void DeserializeAndLoadObject(TSharedPtr<FJsonObject> ObjectData) override;
 
 	TArray<ULogData*> AllLogData;
 

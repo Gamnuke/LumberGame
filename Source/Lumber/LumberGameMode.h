@@ -12,6 +12,7 @@ class ATerrainLoader;
 class ATreeLoader;
 class AChunkLoader;
 class AJobHandler;
+class UMyWorld;
 
 UCLASS(minimalapi)
 class ALumberGameMode : public AGameModeBase
@@ -40,6 +41,12 @@ public:
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	TSubclassOf<ATreeRoot> TreeRootBlueprintClass;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	TSubclassOf<UMyWorld> WorldToLoad;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	UMaterialInterface* TerrainMaterial;
 
 	// variable to hold points where trees will spawn
 	TArray<FVector> Points;
