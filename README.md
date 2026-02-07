@@ -1,6 +1,7 @@
 # Forest Simulator Game
 
 ![Image1](READMEAssets/1.png)
+![Image1](READMEAssets/mountain.png)
 
 Procedurally generated trees using a recursion algorithm, which creates geometry data using a seed for randomness and the UProceduralMeshComponent. 
 
